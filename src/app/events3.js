@@ -26,6 +26,22 @@ export function handleAction(hass, action, entity, options = {}) {
       hass.callService('homeassistant', 'turn_off', { entity_id: entity });
       break;
 
+    case 'lock':
+      hass.callService('lock', 'lock', { entity_id: entity });
+      break;
+
+    case 'unlock':
+      hass.callService('lock', 'unlock', { entity_id: entity });
+      break;
+
+    case 'open_cover':
+      hass.callService('cover', 'open_cover', { entity_id: entity });
+      break;
+
+    case 'close_cover':
+      hass.callService('cover', 'close_cover', { entity_id: entity });
+      break;
+
     case 'set_brightness':
       if (options.brightness !== undefined) {
         hass.callService('light', 'turn_on', {

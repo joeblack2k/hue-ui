@@ -4,6 +4,9 @@ Important, user-visible changes only. See commit history for full detail.
 
 ## Unreleased
 
+- Home: add Tesla (vehicle) device kind with Hue-styled tile + Tesla-style detail screen (battery/charging/range + key controls).
+- Home: add /device/<id> routing so device tiles can open in-app pages (used for Tesla).
+
 - Home: fixed intermittent disappearance of people/weather widgets after returning to Home (route change + stale header refs).
 - Rooms: camera cards prefer live MJPEG stream, keep tokens fresh, and fall back to snapshot polling to prevent flashing/broken image loops.
 - Rooms: back button navigation now triggers on pointerdown for more reliable taps.

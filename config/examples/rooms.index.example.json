@@ -32,7 +32,16 @@
       "icon": "mdi:devices",
       "entity": "switch.example",
       "toggle": true
+    },
+    {
+      "id": "tesla",
+      "kind": "tesla",
+      "name": "Tesla Model Y",
+      "icon": "mdi:car-electric",
+      "path": "device/tesla",
+      "tesla": {
+        "integration_hint": "tessie"
+      }
     }
   ]
 }
-
