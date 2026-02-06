@@ -1,0 +1,33 @@
+{
+  "default": {
+    "name": "Default",
+    "vars": {
+      "--hue-surface-tile": "linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(0, 0, 0, 0.35) 100%)",
+      "--hue-surface-tile-on": "linear-gradient(180deg, rgba(255, 168, 82, 0.95) 0%, rgba(160, 90, 32, 0.9) 100%)",
+      "--hue-surface-dark": "rgba(30, 24, 20, 0.9)",
+      "--hue-text-primary": "#ffffff",
+      "--hue-text-secondary": "rgba(255, 255, 255, 0.8)",
+      "--hue-text-muted": "rgba(255, 255, 255, 0.55)",
+      "--hue-gold": "#f0c75e",
+      "--hue-green": "#3ddc70",
+      "--hue-light-warm": "#ffb74d"
+    },
+    "swatch": ["#2d2318", "#f0c75e", "#3ddc70", "#ffb74d"]
+  },
+  "purple_dark": {
+    "name": "Purple Dark",
+    "vars": {
+      "--hue-surface-tile": "linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(0, 0, 0, 0.42) 100%)",
+      "--hue-surface-tile-on": "linear-gradient(180deg, rgba(197, 132, 255, 0.95) 0%, rgba(104, 52, 160, 0.92) 100%)",
+      "--hue-surface-dark": "rgba(18, 10, 26, 0.92)",
+      "--hue-text-primary": "#ffffff",
+      "--hue-text-secondary": "rgba(242, 233, 255, 0.84)",
+      "--hue-text-muted": "rgba(242, 233, 255, 0.56)",
+      "--hue-gold": "#caa6ff",
+      "--hue-green": "#57f0d5",
+      "--hue-light-warm": "#ffb6f0"
+    },
+    "swatch": ["#1b1027", "#caa6ff", "#57f0d5", "#ff6ad5"]
+  }
+}
+

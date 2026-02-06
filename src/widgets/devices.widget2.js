@@ -76,6 +76,7 @@ function renderMediaTile(hass, item) {
   const state = hass?.states?.[entityId];
 
   const name = item.name || state?.attributes?.friendly_name || entityId.split('.')[1];
+  const isAppleTV = isAppleTvEntity(entityId, name, state);
   const playerState = state?.state || 'off';
   const isPlaying = playerState === 'playing';
   const isPaused = playerState === 'paused';
@@ -88,9 +89,16 @@ function renderMediaTile(hass, item) {
   const sourceLower = String(source).toLowerCase();
   const isTvSource = sourceLower.includes('tv') || sourceLower.includes('hdmi');
   const volumePercent = Math.max(0, Math.min(100, Math.round(((state?.attributes?.volume_level || 0) * 100) / 2) * 2));
+  const mediaDuration = Number(state?.attributes?.media_duration);
+  const mediaPosition = Number(state?.attributes?.media_position);
+  const canShowProgress = isPlaying && Number.isFinite(mediaDuration) && mediaDuration > 0 && Number.isFinite(mediaPosition) && mediaPosition >= 0;
+  const progressPercent = canShowProgress
+    ? Math.max(0, Math.min(100, Math.round((mediaPosition / mediaDuration) * 100)))
+    : 0;
   const isWide = item.wide !== false;
   const showPrimary = item.show_primary !== false;
-  const showVolume = item.show_volume !== false;
+  // Apple TV volume is often managed by the TV/receiver; prefer progress slider instead.
+  const showVolume = item.show_volume !== false && !isAppleTV;
 
   let subtitle = state ? 'Off' : 'Unavailable';
   if (isPlaying && mediaTitle) subtitle = `${mediaTitle}${mediaArtist ? ' - ' + mediaArtist : ''}`;
@@ -102,12 +110,13 @@ function renderMediaTile(hass, item) {
 
   const requestedSources = Array.isArray(item.sources) ? item.sources : [];
   const sourceList = Array.isArray(state?.attributes?.source_list) ? state.attributes.source_list : [];
-  const sourceOptions = requestedSources.length > 0
-    ? requestedSources.map((requested) => {
-      const match = sourceList.find((candidate) => normalizeSource(candidate) === normalizeSource(requested));
-      return { value: match || requested, label: requested };
-    })
-    : [];
+  const wantsAllSources = requestedSources.some((v) => String(v || '').trim() === '*');
+  const sourceOptions = buildSourceOptions({
+    requestedSources,
+    sourceList,
+    wantsAllSources,
+    isAppleTV,
+  });
   const sourceDropdown = sourceOptions.length > 0
     ? `
       <select class="hue-media-source" data-entity="${escapeHtml(entityId)}">
@@ -133,6 +142,13 @@ function renderMediaTile(hass, item) {
       </div>
     `
     : '';
+  // Always render the progress slider so it can become visible later without a full re-render.
+  const progressControls = `
+      <div class="hue-media-progress-wrap ${canShowProgress ? '' : 'is-hidden'}">
+        <input type="range" min="0" max="100" step="1" value="${progressPercent}" class="hue-media-progress" data-entity="${escapeHtml(entityId)}" data-last-step="${progressPercent}" />
+        <div class="hue-media-progress-value">${progressPercent}%</div>
+      </div>
+    `;
 
   return `
     <div class="hue-tile hue-device-tile hue-media-tile ${isActive ? 'is-on' : ''} ${isWide ? 'is-wide' : ''}" data-action="more_info" data-entity="${escapeHtml(entityId)}">
@@ -144,6 +160,7 @@ function renderMediaTile(hass, item) {
       </div>
       <div class="hue-tile-name">${escapeHtml(name)}</div>
       <div class="hue-tile-subtitle hue-media-now">${escapeHtml(subtitle)}</div>
+      ${progressControls}
       ${volumeControls}
       ${sourceDropdown}
     </div>
@@ -155,6 +172,53 @@ function normalizeSource(value) {
     .toLowerCase()
     .replace(/\s+/g, '')
     .replace(/[^a-z0-9]/g, '');
+}
+
+function isAppleTvEntity(entityId, name, state) {
+  const entityLower = String(entityId || '').toLowerCase();
+  if (entityLower.includes('appletv') || entityLower.includes('apple_tv')) return true;
+
+  const friendly = String(state?.attributes?.friendly_name || name || '').toLowerCase();
+  return friendly.includes('apple tv') || friendly.includes('appletv');
+}
+
+function uniqueNonEmptyStrings(values) {
+  const seen = new Set();
+  const out = [];
+  (Array.isArray(values) ? values : []).forEach((v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    const key = s.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(s);
+  });
+  return out;
+}
+
+function buildSourceOptions({ requestedSources, sourceList, wantsAllSources, isAppleTV }) {
+  const list = uniqueNonEmptyStrings(sourceList);
+  if (list.length === 0) return [];
+
+  // Explicit wildcard: show everything from HA (works well for Apple TV apps too).
+  if (wantsAllSources) {
+    return list.map((s) => ({ value: s, label: s }));
+  }
+
+  // Explicit allow-list from config.
+  if (Array.isArray(requestedSources) && requestedSources.length > 0) {
+    return uniqueNonEmptyStrings(requestedSources).map((requested) => {
+      const match = list.find((candidate) => normalizeSource(candidate) === normalizeSource(requested));
+      return { value: match || requested, label: requested };
+    });
+  }
+
+  // Apple TV: by default show apps (its "inputs" are the source_list).
+  if (isAppleTV) {
+    return list.map((s) => ({ value: s, label: s }));
+  }
+
+  return [];
 }
 
 export default { renderDevicesContent, renderMediaPlayersContent };

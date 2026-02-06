@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=12.20';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=12.20';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode } from '../ui/helpers2.js?v=12.20';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=12.20';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=12.20';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=12.20';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=12.20';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=12.20';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=12.20';
+} from './config-loader3.js?v=3.1.45';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.45';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t } from '../ui/helpers2.js?v=3.1.45';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.45';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.45';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.45';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.45';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.45';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.45';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -653,6 +653,30 @@ const STYLES = `
     color: var(--hue-text-muted);
   }
 
+  .hue-media-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .hue-media-progress-wrap.is-hidden {
+    display: none;
+  }
+
+  .hue-media-progress {
+    flex: 1;
+    accent-color: var(--hue-gold);
+    height: 22px;
+  }
+
+  .hue-media-progress-value {
+    width: 40px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--hue-text-muted);
+  }
+
   .hue-media-source {
     margin-top: 8px;
     width: 100%;
@@ -732,6 +756,40 @@ const STYLES = `
     align-items: center;
     gap: 0;
     margin-top: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hue-climate-ruler {
+    padding: 0 10px; /* roughly matches slider thumb overhang */
+    margin-bottom: 6px;
+    user-select: none;
+  }
+
+  .hue-climate-ruler-ticks {
+    height: 12px;
+    width: 100%;
+    background-image:
+      linear-gradient(to bottom, transparent 0 55%, rgba(255, 255, 255, 0.18) 55% 100%),
+      linear-gradient(to bottom, transparent 0 20%, rgba(255, 255, 255, 0.28) 20% 100%);
+    /* Range 18..25 is 7C:
+       - Minor ticks every 0.2C => 35 intervals
+       - Major ticks every 1C   => 7 intervals (every 5 minor ticks) */
+    background-size:
+      calc(100% / 35) 100%,
+      calc(100% / 7) 100%;
+    background-repeat: repeat;
+    border-radius: 999px;
+    opacity: 0.9;
+  }
+
+  .hue-climate-ruler-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 0.2px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 2px;
   }
 
   .hue-climate-setpoint {
@@ -959,9 +1017,11 @@ const STYLES = `
   }
 
   .light-control-modal {
-    width: min(440px, calc(100vw - 24px));
+    width: min(440px, calc(100vw - 34px));
+    max-height: calc(100vh - 46px);
+    overflow-y: auto;
     border-radius: 20px;
-    padding: 20px 18px 18px;
+    padding: 18px 16px 16px;
     box-sizing: border-box;
     background: linear-gradient(180deg, rgba(45, 35, 24, 0.96), rgba(18, 14, 11, 0.96));
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -969,8 +1029,6 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: calc(100vh - 46px);
-    overflow: auto;
   }
 
   .light-control-head {
@@ -1008,60 +1066,6 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 6px;
-  }
-
-  .light-control-power-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(0, 0, 0, 0.22);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
-  }
-
-  .light-control-power-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    color: var(--hue-text-secondary);
-    text-transform: uppercase;
-  }
-
-  .light-control-power-toggle {
-    width: 50px;
-    height: 28px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.38);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    position: relative;
-    flex: 0 0 auto;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
-    cursor: pointer;
-  }
-
-  .light-control-power-toggle[data-on="true"] {
-    background: linear-gradient(180deg, rgba(255, 193, 120, 0.85), rgba(214, 117, 54, 0.86));
-    border-color: rgba(255, 205, 116, 0.7);
-    box-shadow: 0 0 16px rgba(255, 170, 80, 0.22);
-  }
-
-  .light-control-power-thumb {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 1px 7px rgba(0, 0, 0, 0.4);
-    transition: transform 0.22s ease;
-  }
-
-  .light-control-power-toggle[data-on="true"] .light-control-power-thumb {
-    transform: translateX(22px);
   }
 
   .light-control-label {
@@ -1105,8 +1109,78 @@ const STYLES = `
     opacity: 0.45;
   }
 
-  .light-control-group.is-hidden {
-    display: none;
+  .light-control-toggles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .light-control-toggle {
+    height: 34px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--hue-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .light-control-toggle.is-on {
+    border-color: rgba(255, 205, 116, 0.85);
+    background: linear-gradient(180deg, rgba(255, 187, 105, 0.85), rgba(214, 117, 54, 0.86));
+    color: #2a160b;
+    box-shadow: 0 0 14px rgba(255, 170, 80, 0.28);
+  }
+
+  .light-control-power-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+
+  .light-control-power-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--hue-text-secondary);
+  }
+
+  .light-control-power-switch {
+    position: relative;
+    width: 52px;
+    height: 30px;
+    border-radius: 999px;
+    border: none;
+    background: rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    padding: 0;
+    transition: background 160ms ease;
+  }
+
+  .light-control-power-switch[aria-checked="true"] {
+    background: linear-gradient(180deg, #4ddc75 0%, #23a653 100%);
+  }
+
+  .light-control-power-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffffff, #e0e0e0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    transition: transform 160ms ease;
+  }
+
+  .light-control-power-switch[aria-checked="true"] .light-control-power-switch-thumb {
+    transform: translateX(22px);
+  }
+
+  .is-hidden {
+    display: none !important;
   }
 
   /* ===== CAMERA ===== */
@@ -1182,7 +1256,6 @@ class HueRoomScreen extends HTMLElement {
     this._roomsIndex = null;
     this._roomConfig = null;
     this._rendered = false;
-    this._listenersAttached = false;
     this._boundHandleClick = this._handleClick.bind(this);
     this._boundHandlePointerUp = this._handlePointerUp.bind(this);
     this._boundHandlePointerDown = this._handlePointerDown.bind(this);
@@ -1207,20 +1280,29 @@ class HueRoomScreen extends HTMLElement {
     this._deviceRegistry = null;
     this._roomFile = null;
     this._editorIsScene = false;
+    this._swipeStartX = null;
+    this._swipeStartY = null;
+    this._boundSwipeTouchStart = this._handleSwipeTouchStart.bind(this);
+    this._boundSwipeTouchEnd = this._handleSwipeTouchEnd.bind(this);
     this._lightControlEntity = null;
-    this._lightControlSupportsColor = false;
-    this._lightControlSupportsTemp = false;
+    this._lightControlUseColor = false;
+    this._lightControlUseTemp = false;
     this._lightControlDragging = { brightness: false, color: false, temp: false };
-    this._lightControlThrottleTimers = { brightness: null, color: null, temp: null };
-    this._lightControlLastStep = { brightness: null, color: null, temp: null };
-    this._lightControlPending = { brightnessPct: null, hue: null, temp: null };
-    this._autoCameraEntities = null;
-    this._autoCameraLookupStarted = false;
+    this._lightControlCooldownUntil = 0;
+    this._lightControlTimers = { brightness: null, color: null, temp: null };
+    this._lightControlLastHaptic = { brightness: 0, color: 0, temp: 0 };
   }
 
   setConfig(config) {
     if (!config.room) throw new Error('You need to define a room id');
     this._config = config;
+  }
+
+  connectedCallback() {
+    // Ensure listeners are present on reconnect (belt-and-suspenders)
+    if (this._rendered) {
+      this._attachEventListeners();
+    }
   }
 
   set hass(hass) {
@@ -1286,6 +1368,7 @@ class HueRoomScreen extends HTMLElement {
     if (!this._hass || !this._roomConfig || !this._roomsIndex) return;
 
     this._teardownCameraFeeds();
+    this._rendered = false;
 
     const dashboardPath = this._roomsIndex.dashboard_path || '/hue-ui';
     const roomName = this._roomConfig.name || 'Room';
@@ -1351,21 +1434,21 @@ class HueRoomScreen extends HTMLElement {
                 <div class="light-control-title">Light</div>
                 <button class="light-control-close" data-light-action="close" aria-label="Close">x</button>
               </div>
+              <div class="light-control-power-row">
+                <span class="light-control-power-label">Power</span>
+                <button class="light-control-power-switch" role="switch" aria-checked="false" data-light-action="toggle-power">
+                  <span class="light-control-power-switch-thumb"></span>
+                </button>
+              </div>
               <div class="light-control-group">
-                <div class="light-control-label">Brightness</div>
+                <div class="light-control-label">${escapeHtml(t('Brightness', 'Brightness'))}</div>
                 <input class="light-control-slider light-control-brightness" type="range" min="1" max="100" step="1" />
               </div>
-              <div class="light-control-power-row">
-                <div class="light-control-power-label">Power</div>
-                <div class="light-control-power-toggle" data-light-action="toggle-power" data-on="false" role="switch" aria-checked="false">
-                  <div class="light-control-power-thumb"></div>
-                </div>
-              </div>
-              <div class="light-control-group light-control-group-color">
+              <div class="light-control-group light-control-color-group">
                 <div class="light-control-label">Color</div>
                 <input class="light-control-slider light-control-color" type="range" min="0" max="360" step="1" />
               </div>
-              <div class="light-control-group light-control-group-temp">
+              <div class="light-control-group light-control-temp-group">
                 <div class="light-control-label">Warmth</div>
                 <input class="light-control-slider light-control-temp" type="range" min="153" max="500" step="1" />
               </div>
@@ -1411,20 +1494,6 @@ class HueRoomScreen extends HTMLElement {
       blocks.push(this._renderCameraSection(section));
     });
 
-    // Auto camera fallback: if the room config has no camera section, render
-    // any camera entities that match the room (area-scoped async, then rerender).
-    if (cameraSections.length === 0) {
-      const autoEntities = Array.isArray(this._autoCameraEntities) ? this._autoCameraEntities : null;
-      if (autoEntities && autoEntities.length > 0) {
-        autoEntities.forEach((entityId) => {
-          blocks.push(this._renderCameraSection({ type: 'camera', entity: entityId, title: 'CAMERA' }));
-        });
-      } else if (!this._autoCameraLookupStarted) {
-        this._autoCameraLookupStarted = true;
-        void this._loadAutoCamerasForRoom();
-      }
-    }
-
     if (devicesSection) {
       blocks.push(this._renderDevicesSection(devicesSection));
     }
@@ -1444,23 +1513,11 @@ class HueRoomScreen extends HTMLElement {
     return blocks.join('');
   }
 
-  async _loadAutoCamerasForRoom() {
-    try {
-      const options = await this._getRoomAreaScopedEntities(['camera']);
-      this._autoCameraEntities = (options || []).map((o) => o.entity_id).filter((id) => String(id).startsWith('camera.'));
-    } catch {
-      this._autoCameraEntities = [];
-    }
-    if (this._rendered) {
-      this._render();
-    }
-  }
-
   _renderScenesSection(scenes) {
     return `
       <div class="hue-section">
         <div class="hue-section-header">
-          <span class="hue-section-title">SCENES</span>
+          <span class="hue-section-title">${escapeHtml(t('SCENES', 'SCENES'))}</span>
         </div>
         <div class="hue-scene-pager">
           ${renderScenesContent(this._hass, scenes)}
@@ -1488,7 +1545,7 @@ class HueRoomScreen extends HTMLElement {
     return `
       <div class="hue-section">
         <div class="hue-section-header">
-          <span class="hue-section-title">LIGHTING</span>
+          <span class="hue-section-title">${escapeHtml(t('LIGHTING', 'LIGHTING'))}</span>
         </div>
         <div class="hue-light-pager">
           ${pages.join('')}
@@ -1503,7 +1560,7 @@ class HueRoomScreen extends HTMLElement {
     return `
       <div class="hue-section">
         <div class="hue-section-header">
-          <span class="hue-section-title">CLIMATE</span>
+          <span class="hue-section-title">${escapeHtml(t('CLIMATE', 'CLIMATE'))}</span>
         </div>
         <div class="hue-tile-grid">
           ${content}
@@ -1518,7 +1575,7 @@ class HueRoomScreen extends HTMLElement {
     return `
       <div class="hue-section">
         <div class="hue-section-header">
-          <span class="hue-section-title">DEVICES</span>
+          <span class="hue-section-title">${escapeHtml(t('DEVICES', 'DEVICES'))}</span>
         </div>
         <div class="hue-tile-grid">
           ${content}
@@ -1560,18 +1617,18 @@ class HueRoomScreen extends HTMLElement {
     return `
       <div class="hue-section">
         <div class="hue-section-header">
-          <span class="hue-section-title">${escapeHtml(title.toUpperCase())}</span>
+          <span class="hue-section-title">${escapeHtml(t(title.toUpperCase(), title.toUpperCase()))}</span>
         </div>
         <div class="hue-camera-card ${available ? '' : 'is-unavailable'}" data-action="more_info" data-entity="${escapeHtml(entityId)}">
           <div class="hue-camera-media">
             <img
               class="hue-camera-feed"
-              src="${escapeHtml(streamUrl)}"
+              src="${escapeHtml(this._withCacheBuster(snapshotUrl))}"
               alt="${escapeHtml(cameraName)}"
               loading="lazy"
               data-live-src="${escapeHtml(streamUrl)}"
               data-snapshot-src="${escapeHtml(snapshotUrl)}"
-              data-mode="live"
+              data-mode="snapshot"
               data-refresh-ms="${refreshMs}"
               data-entity="${escapeHtml(entityId)}"
             />
@@ -1618,7 +1675,16 @@ class HueRoomScreen extends HTMLElement {
   // ===== Event Handling =====
 
   _attachEventListeners() {
-    if (this._listenersAttached) return;
+    // Always detach first to avoid duplicates, then re-attach.
+    // No flag-based skipping — listeners must be reattached after every innerHTML rebuild.
+    this.shadowRoot.removeEventListener('pointerdown', this._boundHandlePointerDown);
+    this.shadowRoot.removeEventListener('click', this._boundHandleClick);
+    this.shadowRoot.removeEventListener('pointerup', this._boundHandlePointerUp);
+    this.shadowRoot.removeEventListener('pointercancel', this._boundHandlePointerCancel);
+    this.shadowRoot.removeEventListener('pointermove', this._boundHandlePointerMove);
+    this.shadowRoot.removeEventListener('input', this._boundHandleInput);
+    this.shadowRoot.removeEventListener('change', this._boundHandleChange);
+
     this.shadowRoot.addEventListener('pointerdown', this._boundHandlePointerDown);
     this.shadowRoot.addEventListener('click', this._boundHandleClick);
     this.shadowRoot.addEventListener('pointerup', this._boundHandlePointerUp);
@@ -1626,35 +1692,20 @@ class HueRoomScreen extends HTMLElement {
     this.shadowRoot.addEventListener('pointermove', this._boundHandlePointerMove);
     this.shadowRoot.addEventListener('input', this._boundHandleInput);
     this.shadowRoot.addEventListener('change', this._boundHandleChange);
-    this._listenersAttached = true;
+    this.shadowRoot.removeEventListener('touchstart', this._boundSwipeTouchStart);
+    this.shadowRoot.removeEventListener('touchend', this._boundSwipeTouchEnd);
+    this.shadowRoot.addEventListener('touchstart', this._boundSwipeTouchStart, { passive: true });
+    this.shadowRoot.addEventListener('touchend', this._boundSwipeTouchEnd, { passive: true });
   }
 
   _handlePointerDown(e) {
     const overlay = this.shadowRoot.querySelector('.widget-editor-overlay');
     if (overlay?.classList.contains('is-open')) return;
     const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
-    if (lightOverlay?.classList.contains('is-open')) {
-      // While the light control is open, we still want pointer events for sliders,
-      // but we must never start the long-press widget editor timer.
-      const brightness = e.target.closest('.light-control-brightness');
-      const color = e.target.closest('.light-control-color');
-      const temp = e.target.closest('.light-control-temp');
-      if (brightness) this._lightControlDragging.brightness = true;
-      if (color) this._lightControlDragging.color = true;
-      if (temp) this._lightControlDragging.temp = true;
-      return;
-    }
-
-    const backButton = e.target.closest('.hue-header-back');
-    if (backButton) {
-      e.preventDefault();
-      e.stopPropagation();
-      this._navigateToPath(backButton.dataset.path, true);
-      return;
-    }
+    if (lightOverlay?.classList.contains('is-open')) return;
 
     const isInteractive = e.target.closest(
-      '.hue-header-back, .hue-toggle, .hue-media-primary, .hue-media-volume, .hue-media-source, .hue-climate-setpoint, .light-control-modal, button, input, select'
+      '.hue-header-back, .hue-toggle, .hue-media-primary, .hue-media-volume, .hue-media-progress, .hue-media-source, .hue-climate-setpoint, .light-control-modal, button, input, select'
     );
     if (isInteractive) return;
 
@@ -1673,6 +1724,7 @@ class HueRoomScreen extends HTMLElement {
 
   _handlePointerCancel() {
     this._clearLongPressTimer();
+    this._releaseLightDragGuards();
   }
 
   _handlePointerMove(e) {
@@ -1687,26 +1739,7 @@ class HueRoomScreen extends HTMLElement {
 
   _handlePointerUp(e) {
     this._clearLongPressTimer();
-
-    const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
-    if (lightOverlay?.classList.contains('is-open')) {
-      const brightness = e.target.closest('.light-control-brightness');
-      const color = e.target.closest('.light-control-color');
-      const temp = e.target.closest('.light-control-temp');
-      if (brightness) {
-        this._lightControlDragging.brightness = false;
-        this._flushLightControlTimer('brightness');
-      }
-      if (color) {
-        this._lightControlDragging.color = false;
-        this._flushLightControlTimer('color');
-      }
-      if (temp) {
-        this._lightControlDragging.temp = false;
-        this._flushLightControlTimer('temp');
-      }
-    }
-
+    this._releaseLightDragGuards();
     const backButton = e.target.closest('.hue-header-back');
     if (!backButton) return;
 
@@ -1828,64 +1861,95 @@ class HueRoomScreen extends HTMLElement {
     }
   }
 
+  _queueLightControlTimer(kind, fn) {
+    // Always store the latest callback so the final value is never lost
+    this._lightControlPendingFn = this._lightControlPendingFn || {};
+    this._lightControlPendingFn[kind] = fn;
+    if (this._lightControlTimers[kind]) return; // timer already running, fn updated
+    this._lightControlTimers[kind] = setTimeout(() => {
+      this._lightControlTimers[kind] = null;
+      const pending = this._lightControlPendingFn[kind];
+      this._lightControlPendingFn[kind] = null;
+      if (pending) pending();
+    }, 120);
+  }
+
+  _flushLightControlTimer(kind) {
+    const timer = this._lightControlTimers[kind];
+    if (timer) {
+      clearTimeout(timer);
+      this._lightControlTimers[kind] = null;
+    }
+    // Execute the latest pending call so the final slider position is sent
+    const pending = this._lightControlPendingFn?.[kind];
+    if (pending) {
+      this._lightControlPendingFn[kind] = null;
+      pending();
+    }
+  }
+
   _handleInput(e) {
     const lightBrightness = e.target.closest('.light-control-brightness');
     if (lightBrightness) {
       e.stopPropagation();
+      this._lightControlDragging.brightness = true;
       const entity = this._lightControlEntity;
       if (!entity) return;
       const percent = Math.max(1, Math.min(100, Number.parseInt(lightBrightness.value, 10) || 1));
-      this._lightControlPending.brightnessPct = percent;
-
-      // Hard haptic on 2% steps to avoid noisy vibration spam.
-      const stepped = Math.max(0, Math.min(100, Math.round(percent / 2) * 2));
-      if (this._lightControlLastStep.brightness !== stepped) {
-        this._lightControlLastStep.brightness = stepped;
-        hapticFeedback('hard');
+      const brightness = Math.round((percent / 100) * 255);
+      // Haptic every 2%
+      if (Math.abs(percent - this._lightControlLastHaptic.brightness) >= 2) {
+        hapticFeedback();
+        this._lightControlLastHaptic.brightness = percent;
       }
-
-      this._queueLightControlTimer('brightness');
+      this._queueLightControlTimer('brightness', () => {
+        handleAction(this._hass, 'set_brightness', entity, { brightness });
+      });
       return;
     }
 
     const lightColor = e.target.closest('.light-control-color');
     if (lightColor) {
       e.stopPropagation();
-      if (!this._lightControlSupportsColor) return;
+      this._lightControlDragging.color = true;
+      if (!this._lightControlUseColor) return;
       const entity = this._lightControlEntity;
       if (!entity) return;
       const hue = Math.max(0, Math.min(360, Number.parseInt(lightColor.value, 10) || 0));
-      this._lightControlPending.hue = hue;
-      this._setColorSliderGlow(hue);
-
-      const stepped = Math.max(0, Math.min(360, Math.round(hue / 10) * 10));
-      if (this._lightControlLastStep.color !== stepped) {
-        this._lightControlLastStep.color = stepped;
-        hapticFeedback('hard');
+      const state = this._hass?.states?.[entity];
+      const sat = Number.isFinite(Number(state?.attributes?.hs_color?.[1]))
+        ? Number(state.attributes.hs_color[1])
+        : 100;
+      // Haptic every 10°
+      if (Math.abs(hue - this._lightControlLastHaptic.color) >= 10) {
+        hapticFeedback();
+        this._lightControlLastHaptic.color = hue;
       }
-
-      this._queueLightControlTimer('color');
+      this._queueLightControlTimer('color', () => {
+        handleAction(this._hass, 'set_color_hue', entity, { hs_color: [hue, sat] });
+      });
+      this._setColorSliderGlow(hue);
       return;
     }
 
     const lightTemp = e.target.closest('.light-control-temp');
     if (lightTemp) {
       e.stopPropagation();
-      if (!this._lightControlSupportsTemp) return;
+      this._lightControlDragging.temp = true;
+      if (!this._lightControlUseTemp) return;
       const entity = this._lightControlEntity;
       if (!entity) return;
       const temp = Number.parseInt(lightTemp.value, 10);
       if (!Number.isFinite(temp)) return;
-      this._lightControlPending.temp = temp;
-      this._setTempSliderGlow(temp, Number(lightTemp.min), Number(lightTemp.max));
-
-      const stepped = Math.round(temp / 10) * 10;
-      if (this._lightControlLastStep.temp !== stepped) {
-        this._lightControlLastStep.temp = stepped;
-        hapticFeedback('hard');
+      // Haptic every 10 mireds
+      if (Math.abs(temp - this._lightControlLastHaptic.temp) >= 10) {
+        hapticFeedback();
+        this._lightControlLastHaptic.temp = temp;
       }
-
-      this._queueLightControlTimer('temp');
+      this._queueLightControlTimer('temp', () => {
+        handleAction(this._hass, 'set_color_temp', entity, { color_temp: temp });
+      });
+      this._setTempSliderGlow(temp, Number(lightTemp.min), Number(lightTemp.max));
       return;
     }
 
@@ -1941,12 +2005,41 @@ class HueRoomScreen extends HTMLElement {
       || e.target.closest('.light-control-temp')
     ) {
       e.stopPropagation();
+      // Flush pending throttled call and release drag guard on change (pointerup fires change)
+      this._releaseLightDragGuards();
       return;
     }
 
     const widgetSelect = e.target.closest('.widget-editor-entity-select');
     if (widgetSelect) {
       e.stopPropagation();
+      return;
+    }
+
+    const progress = e.target.closest('.hue-media-progress');
+    if (progress) {
+      e.stopPropagation();
+      const entity = progress.dataset.entity;
+      if (!entity) return;
+
+      const raw = Number.parseInt(progress.value, 10);
+      if (!Number.isFinite(raw)) return;
+      const stepped = Math.max(0, Math.min(100, Math.round(raw)));
+      if (String(stepped) !== progress.value) {
+        progress.value = String(stepped);
+      }
+
+      const state = this._hass?.states?.[entity];
+      const duration = Number(state?.attributes?.media_duration);
+      if (!Number.isFinite(duration) || duration <= 0) return;
+
+      // Only seek on change to avoid spamming HA while dragging.
+      if (progress.dataset.lastStep !== String(stepped)) {
+        progress.dataset.lastStep = String(stepped);
+        const seekPosition = (stepped / 100) * duration;
+        hapticFeedback('hard');
+        handleAction(this._hass, 'media_seek', entity, { seek_position: seekPosition });
+      }
       return;
     }
 
@@ -1960,6 +2053,39 @@ class HueRoomScreen extends HTMLElement {
 
     hapticFeedback();
     handleAction(this._hass, 'media_select_source', entity, { source });
+  }
+
+  _handleSwipeTouchStart(e) {
+    const touch = e.touches[0];
+    if (!touch) return;
+    // Only track swipes starting from the left 20px edge
+    if (touch.clientX <= 20) {
+      this._swipeStartX = touch.clientX;
+      this._swipeStartY = touch.clientY;
+    } else {
+      this._swipeStartX = null;
+      this._swipeStartY = null;
+    }
+  }
+
+  _handleSwipeTouchEnd(e) {
+    if (this._swipeStartX === null) return;
+    const touch = e.changedTouches[0];
+    if (!touch) { this._swipeStartX = null; return; }
+    const dx = touch.clientX - this._swipeStartX;
+    const dy = Math.abs(touch.clientY - this._swipeStartY);
+    this._swipeStartX = null;
+    this._swipeStartY = null;
+    // Require 80px horizontal, and horizontal > vertical (not a scroll)
+    if (dx >= 80 && dx > dy) {
+      // Don't swipe back if a modal/editor is open
+      const overlay = this.shadowRoot.querySelector('.widget-editor-overlay');
+      if (overlay?.classList.contains('is-open')) return;
+      const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
+      if (lightOverlay?.classList.contains('is-open')) return;
+      const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
+      this._navigateToPath(dashboardPath, true);
+    }
   }
 
   _navigateToPath(path, withHaptic = false) {
@@ -2007,19 +2133,8 @@ class HueRoomScreen extends HTMLElement {
 
     const state = this._hass.states[entityId];
     const colorMode = String(state?.attributes?.color_mode || '').toLowerCase();
-    const supported = Array.isArray(state?.attributes?.supported_color_modes)
-      ? state.attributes.supported_color_modes.map((v) => String(v || '').toLowerCase())
-      : [];
-    this._lightControlSupportsColor = supported.some((m) => ['hs', 'xy', 'rgb', 'rgbw', 'rgbww'].includes(m))
-      || colorMode === 'hs'
-      || colorMode === 'xy'
-      || !!state?.attributes?.hs_color;
-    this._lightControlSupportsTemp = supported.includes('color_temp')
-      || colorMode === 'color_temp'
-      || Number.isFinite(Number(state?.attributes?.color_temp))
-      || Number.isFinite(Number(state?.attributes?.min_mireds))
-      || Number.isFinite(Number(state?.attributes?.max_mireds));
-    this._lightControlDragging = { brightness: false, color: false, temp: false };
+    this._lightControlUseColor = colorMode === 'hs' || colorMode === 'xy' || !!state?.attributes?.hs_color;
+    this._lightControlUseTemp = colorMode === 'color_temp' || Number.isFinite(Number(state?.attributes?.color_temp));
 
     const overlay = this.shadowRoot.querySelector('.light-control-overlay');
     if (!overlay) return;
@@ -2031,14 +2146,24 @@ class HueRoomScreen extends HTMLElement {
     const overlay = this.shadowRoot.querySelector('.light-control-overlay');
     if (overlay) overlay.classList.remove('is-open');
     this._lightControlEntity = null;
-    this._lightControlSupportsColor = false;
-    this._lightControlSupportsTemp = false;
-    this._lightControlDragging = { brightness: false, color: false, temp: false };
-    Object.keys(this._lightControlThrottleTimers || {}).forEach((key) => {
-      const timer = this._lightControlThrottleTimers[key];
-      if (timer) clearTimeout(timer);
-      this._lightControlThrottleTimers[key] = null;
-    });
+    this._lightControlUseColor = false;
+    this._lightControlUseTemp = false;
+    this._releaseLightDragGuards();
+  }
+
+  _releaseLightDragGuards() {
+    let wasDragging = false;
+    for (const kind of ['brightness', 'color', 'temp']) {
+      if (this._lightControlDragging[kind]) wasDragging = true;
+      // Flush: execute the latest pending call so final slider value is sent to HA
+      this._flushLightControlTimer(kind);
+      this._lightControlDragging[kind] = false;
+    }
+    // Keep a cooldown so _refreshLightControlUi doesn't overwrite the slider
+    // with stale HA state before the service call round-trips
+    if (wasDragging) {
+      this._lightControlCooldownUntil = Date.now() + 1500;
+    }
   }
 
   _handleLightControlAction(action) {
@@ -2052,144 +2177,93 @@ class HueRoomScreen extends HTMLElement {
     }
 
     if (action === 'toggle-power') {
+      hapticFeedback();
       handleAction(this._hass, 'toggle', entity);
-      this._refreshLightControlUi();
+      // Update the switch UI immediately
+      const powerSwitch = this.shadowRoot.querySelector('.light-control-power-switch');
+      if (powerSwitch) {
+        const wasOn = powerSwitch.getAttribute('aria-checked') === 'true';
+        powerSwitch.setAttribute('aria-checked', wasOn ? 'false' : 'true');
+      }
       return;
     }
   }
 
-  _queueLightControlTimer(kind) {
-    const key = String(kind || '').toLowerCase();
-    if (!this._lightControlThrottleTimers) {
-      this._lightControlThrottleTimers = { brightness: null, color: null, temp: null };
-    }
-    const existing = this._lightControlThrottleTimers[key];
-    if (existing) clearTimeout(existing);
-    this._lightControlThrottleTimers[key] = setTimeout(() => {
-      this._lightControlThrottleTimers[key] = null;
-      this._sendLightControlPending(key);
-    }, 120);
-  }
-
-  _flushLightControlTimer(kind) {
-    const key = String(kind || '').toLowerCase();
-    const timer = this._lightControlThrottleTimers?.[key];
-    if (timer) {
-      clearTimeout(timer);
-      this._lightControlThrottleTimers[key] = null;
-    }
-    this._sendLightControlPending(key);
-  }
-
-  _sendLightControlPending(kind) {
+  _refreshLightControlUi() {
+    const overlay = this.shadowRoot.querySelector('.light-control-overlay');
+    if (!overlay?.classList.contains('is-open')) return;
     const entity = this._lightControlEntity;
     if (!entity) return;
-    const pending = this._lightControlPending || {};
+    const state = this._hass?.states?.[entity];
+    if (!state) return;
 
-    if (kind === 'brightness') {
-      const pct = Number(pending.brightnessPct);
-      if (!Number.isFinite(pct)) return;
-      const percent = Math.max(1, Math.min(100, Math.round(pct)));
-      const brightness = Math.round((percent / 100) * 255);
-      handleAction(this._hass, 'set_brightness', entity, { brightness });
-      return;
+    // Skip UI refresh during active drag or cooldown after release
+    if (this._lightControlDragging && Object.values(this._lightControlDragging).some(Boolean)) return;
+    if (Date.now() < this._lightControlCooldownUntil) return;
+
+    const titleEl = this.shadowRoot.querySelector('.light-control-title');
+    const brightnessEl = this.shadowRoot.querySelector('.light-control-brightness');
+    const powerSwitch = this.shadowRoot.querySelector('.light-control-power-switch');
+    const colorEl = this.shadowRoot.querySelector('.light-control-color');
+    const tempEl = this.shadowRoot.querySelector('.light-control-temp');
+    const colorGroup = this.shadowRoot.querySelector('.light-control-color-group');
+    const tempGroup = this.shadowRoot.querySelector('.light-control-temp-group');
+
+    const name = state.attributes?.friendly_name || entity.split('.')[1];
+    if (titleEl) titleEl.textContent = name;
+
+    const rawBrightness = Number(state.attributes?.brightness);
+    const brightnessPct = Number.isFinite(rawBrightness)
+      ? Math.max(1, Math.min(100, Math.round((rawBrightness / 255) * 100)))
+      : 100;
+    if (brightnessEl) {
+      brightnessEl.value = String(brightnessPct);
+      brightnessEl.style.setProperty('--track', 'linear-gradient(90deg, #5bb4ff 0%, #ffd56f 55%, #ff8a56 100%)');
+      brightnessEl.style.setProperty('--glow', 'rgba(255, 190, 102, 0.48)');
     }
 
-    if (kind === 'color') {
-      if (!this._lightControlSupportsColor) return;
-      const hue = Number(pending.hue);
-      if (!Number.isFinite(hue)) return;
-      const safeHue = Math.max(0, Math.min(360, Math.round(hue)));
-      const state = this._hass?.states?.[entity];
-      const sat = Number.isFinite(Number(state?.attributes?.hs_color?.[1]))
-        ? Number(state.attributes.hs_color[1])
-        : 100;
-      handleAction(this._hass, 'set_color_hue', entity, { hs_color: [safeHue, sat] });
-      return;
+    const isOn = state.state === 'on';
+    if (powerSwitch) {
+      powerSwitch.setAttribute('aria-checked', isOn ? 'true' : 'false');
     }
 
-    if (kind === 'temp') {
-      if (!this._lightControlSupportsTemp) return;
-      const temp = Number(pending.temp);
-      if (!Number.isFinite(temp)) return;
-      handleAction(this._hass, 'set_color_temp', entity, { color_temp: Math.round(temp) });
+    // Auto-detect color/temp support
+    const colorMode = String(state.attributes?.color_mode || '').toLowerCase();
+    const supportsColor = colorMode === 'hs' || colorMode === 'xy' || !!state.attributes?.hs_color;
+    const supportsTemp = colorMode === 'color_temp' || Number.isFinite(Number(state.attributes?.color_temp));
+    this._lightControlUseColor = supportsColor;
+    this._lightControlUseTemp = supportsTemp;
+
+    // Toggle visibility
+    if (colorGroup) colorGroup.classList.toggle('is-hidden', !supportsColor);
+    if (tempGroup) tempGroup.classList.toggle('is-hidden', !supportsTemp);
+
+    const hue = Number.isFinite(Number(state.attributes?.hs_color?.[0]))
+      ? Number(state.attributes.hs_color[0])
+      : 30;
+    if (colorEl) {
+      colorEl.value = String(Math.round(hue));
+      colorEl.disabled = !supportsColor;
+      this._setColorSliderGlow(hue);
+    }
+
+    const minMired = Number(state.attributes?.min_mireds);
+    const maxMired = Number(state.attributes?.max_mireds);
+    const min = Number.isFinite(minMired) ? minMired : 153;
+    const max = Number.isFinite(maxMired) ? maxMired : 500;
+    const colorTempRaw = Number(state.attributes?.color_temp);
+    const colorTemp = Number.isFinite(colorTempRaw)
+      ? Math.max(min, Math.min(max, colorTempRaw))
+      : Math.round((min + max) / 2);
+
+    if (tempEl) {
+      tempEl.min = String(min);
+      tempEl.max = String(max);
+      tempEl.value = String(colorTemp);
+      tempEl.disabled = !supportsTemp;
+      this._setTempSliderGlow(colorTemp, min, max);
     }
   }
-
-	  _refreshLightControlUi() {
-	    const overlay = this.shadowRoot.querySelector('.light-control-overlay');
-	    if (!overlay?.classList.contains('is-open')) return;
-	    const entity = this._lightControlEntity;
-	    if (!entity) return;
-	    const state = this._hass?.states?.[entity];
-	    if (!state) return;
-
-	    const titleEl = this.shadowRoot.querySelector('.light-control-title');
-	    const brightnessEl = this.shadowRoot.querySelector('.light-control-brightness');
-	    const powerToggle = this.shadowRoot.querySelector('.light-control-power-toggle');
-	    const colorGroup = this.shadowRoot.querySelector('.light-control-group-color');
-	    const tempGroup = this.shadowRoot.querySelector('.light-control-group-temp');
-	    const colorEl = this.shadowRoot.querySelector('.light-control-color');
-	    const tempEl = this.shadowRoot.querySelector('.light-control-temp');
-
-	    const name = state.attributes?.friendly_name || entity.split('.')[1];
-	    if (titleEl) titleEl.textContent = name;
-
-	    const rawBrightness = Number(state.attributes?.brightness);
-	    const brightnessPct = Number.isFinite(rawBrightness)
-	      ? Math.max(1, Math.min(100, Math.round((rawBrightness / 255) * 100)))
-	      : 100;
-	    if (brightnessEl) {
-	      if (!this._lightControlDragging?.brightness) {
-	        brightnessEl.value = String(brightnessPct);
-	      }
-	      brightnessEl.style.setProperty('--track', 'linear-gradient(90deg, #5bb4ff 0%, #ffd56f 55%, #ff8a56 100%)');
-	      brightnessEl.style.setProperty('--glow', 'rgba(255, 190, 102, 0.48)');
-	    }
-
-	    const isOn = state.state === 'on';
-	    if (powerToggle) {
-	      powerToggle.dataset.on = isOn ? 'true' : 'false';
-	      powerToggle.setAttribute('aria-checked', isOn ? 'true' : 'false');
-	    }
-
-	    if (colorGroup) {
-	      colorGroup.classList.toggle('is-hidden', !this._lightControlSupportsColor);
-	    }
-	    if (tempGroup) {
-	      tempGroup.classList.toggle('is-hidden', !this._lightControlSupportsTemp);
-	    }
-
-	    const hue = Number.isFinite(Number(state.attributes?.hs_color?.[0]))
-	      ? Number(state.attributes.hs_color[0])
-	      : 30;
-	    if (colorEl) {
-	      if (!this._lightControlDragging?.color) {
-	        colorEl.value = String(Math.round(hue));
-	      }
-	      colorEl.disabled = !this._lightControlSupportsColor;
-	      this._setColorSliderGlow(hue);
-	    }
-
-	    const minMired = Number(state.attributes?.min_mireds);
-	    const maxMired = Number(state.attributes?.max_mireds);
-	    const min = Number.isFinite(minMired) ? minMired : 153;
-	    const max = Number.isFinite(maxMired) ? maxMired : 500;
-	    const colorTempRaw = Number(state.attributes?.color_temp);
-	    const colorTemp = Number.isFinite(colorTempRaw)
-	      ? Math.max(min, Math.min(max, colorTempRaw))
-	      : Math.round((min + max) / 2);
-
-	    if (tempEl) {
-	      tempEl.min = String(min);
-	      tempEl.max = String(max);
-	      if (!this._lightControlDragging?.temp) {
-	        tempEl.value = String(colorTemp);
-	      }
-	      tempEl.disabled = !this._lightControlSupportsTemp;
-	      this._setTempSliderGlow(colorTemp, min, max);
-	    }
-	  }
 
   _setColorSliderGlow(hue) {
     const slider = this.shadowRoot.querySelector('.light-control-color');
@@ -2972,43 +3046,56 @@ class HueRoomScreen extends HTMLElement {
         ? Math.max(2000, Math.min(15000, rawRefreshMs))
         : 4500;
 
-      // Prefer live MJPEG stream, fall back to snapshot polling on error.
-      img.addEventListener('error', () => {
-        if (!img.isConnected) return;
-        if (img.dataset.mode === 'live') {
-          this._switchCameraToSnapshot(img);
-        }
-      });
-
-      img.addEventListener('load', () => {
-        if (!img.isConnected) return;
-        img.dataset.lastOk = String(Date.now());
-      });
-
-      this._switchCameraToLive(img);
-
-      // If we're in snapshot mode, poll snapshots. If live mode works, we don't need polling.
-      const intervalId = setInterval(() => {
-        if (!img.isConnected) return;
-        if (img.dataset.mode === 'snapshot') {
-          this._refreshCameraSnapshot(img);
-        }
-      }, refreshMs);
-      this._cameraRefreshIntervals.set(img, intervalId);
+      // Try live MJPEG stream first
+      this._switchCameraToLive(img, refreshMs);
     });
   }
 
-  _switchCameraToLive(img) {
-    if (!img || !img.isConnected) return;
+  _switchCameraToLive(img, refreshMs) {
     const liveSrc = img.dataset.liveSrc;
-    if (!liveSrc) return;
+    if (!liveSrc) {
+      this._startSnapshotPolling(img, refreshMs);
+      return;
+    }
+
     img.dataset.mode = 'live';
+    const errorHandler = () => {
+      img.removeEventListener('error', errorHandler);
+      console.warn('[HueRoomScreen] Live stream error, falling back to snapshot polling');
+      this._switchCameraToSnapshot(img);
+      this._startSnapshotPolling(img, refreshMs);
+    };
+    img.addEventListener('error', errorHandler, { once: true });
     img.src = liveSrc;
+
+    // Periodically refresh the live URL (access tokens rotate)
+    const tokenRefreshId = setInterval(() => {
+      if (!img.isConnected) {
+        clearInterval(tokenRefreshId);
+        return;
+      }
+      const entityId = img.dataset.entity;
+      if (!entityId) return;
+      const state = this._hass?.states?.[entityId];
+      if (!state) return;
+      const newLiveSrc = this._cameraStreamUrl(entityId, state);
+      const newSnapshotSrc = this._cameraSnapshotUrl(entityId, state);
+      img.dataset.liveSrc = newLiveSrc;
+      img.dataset.snapshotSrc = newSnapshotSrc;
+      if (img.dataset.mode === 'live' && img.src !== newLiveSrc) {
+        img.src = newLiveSrc;
+      }
+    }, 60000);
+    this._cameraRefreshIntervals.set(`token-${img.dataset.entity}`, tokenRefreshId);
+  }
+
+  _startSnapshotPolling(img, refreshMs) {
+    this._refreshCameraSnapshot(img, true);
+    const intervalId = setInterval(() => this._refreshCameraSnapshot(img), refreshMs);
+    this._cameraRefreshIntervals.set(img, intervalId);
   }
 
   _switchCameraToSnapshot(img) {
-    if (!img || !img.isConnected) return;
-    img.dataset.mode = 'snapshot';
     this._refreshCameraSnapshot(img, true);
   }
 
@@ -3038,7 +3125,7 @@ class HueRoomScreen extends HTMLElement {
   }
 
   _teardownCameraFeeds() {
-    for (const intervalId of this._cameraRefreshIntervals.values()) {
+    for (const [key, intervalId] of this._cameraRefreshIntervals.entries()) {
       clearInterval(intervalId);
     }
     this._cameraRefreshIntervals.clear();
@@ -3059,17 +3146,6 @@ class HueRoomScreen extends HTMLElement {
           statusEl.textContent = 'Unavailable';
         } else {
           statusEl.textContent = 'Live';
-        }
-      }
-
-      if (img && available) {
-        // Keep tokens fresh: camera access_token can rotate, so keep URLs updated.
-        img.dataset.liveSrc = this._cameraStreamUrl(entityId, state);
-        img.dataset.snapshotSrc = this._cameraSnapshotUrl(entityId, state);
-
-        // If we're in live mode but the src doesn't match anymore, update it.
-        if (img.dataset.mode === 'live' && img.src !== img.dataset.liveSrc) {
-          img.src = img.dataset.liveSrc;
         }
       }
     });
@@ -3177,6 +3253,23 @@ class HueRoomScreen extends HTMLElement {
         }
         if (volumeValue) {
           volumeValue.textContent = `${volumePercent}%`;
+        }
+
+        const progressWrap = tile.querySelector('.hue-media-progress-wrap');
+        const progressInput = tile.querySelector('.hue-media-progress');
+        const progressValue = tile.querySelector('.hue-media-progress-value');
+        if (progressWrap && progressInput) {
+          const duration = Number(state.attributes?.media_duration);
+          const position = Number(state.attributes?.media_position);
+          const canShow = state.state === 'playing'
+            && Number.isFinite(duration) && duration > 0
+            && Number.isFinite(position) && position >= 0;
+          progressWrap.classList.toggle('is-hidden', !canShow);
+          if (canShow) {
+            const pct = Math.max(0, Math.min(100, Math.round((position / duration) * 100)));
+            progressInput.value = String(pct);
+            if (progressValue) progressValue.textContent = `${pct}%`;
+          }
         }
 
         const sourceSelect = tile.querySelector('.hue-media-source');
@@ -3316,18 +3409,12 @@ class HueRoomScreen extends HTMLElement {
   }
 
   disconnectedCallback() {
+    // Only tear down timers and camera feeds.
+    // Event listeners are on the persistent shadowRoot — leave them intact
+    // so they survive disconnect/reconnect cycles without reattachment.
     this._teardownCameraFeeds();
     this._clearLongPressTimer();
     this._closeLightControl();
-    if (!this._listenersAttached) return;
-    this.shadowRoot.removeEventListener('pointerdown', this._boundHandlePointerDown);
-    this.shadowRoot.removeEventListener('click', this._boundHandleClick);
-    this.shadowRoot.removeEventListener('pointerup', this._boundHandlePointerUp);
-    this.shadowRoot.removeEventListener('pointercancel', this._boundHandlePointerCancel);
-    this.shadowRoot.removeEventListener('pointermove', this._boundHandlePointerMove);
-    this.shadowRoot.removeEventListener('input', this._boundHandleInput);
-    this.shadowRoot.removeEventListener('change', this._boundHandleChange);
-    this._listenersAttached = false;
   }
 
   static getStubConfig() {

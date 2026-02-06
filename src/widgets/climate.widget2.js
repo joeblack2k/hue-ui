@@ -64,6 +64,19 @@ function renderClimateTile(hass, entityId, section) {
         </div>
       </div>
       <div class="hue-climate-controls">
+        <div class="hue-climate-ruler" aria-hidden="true">
+          <div class="hue-climate-ruler-ticks"></div>
+          <div class="hue-climate-ruler-labels">
+            <span>18</span>
+            <span>19</span>
+            <span>20</span>
+            <span>21</span>
+            <span>22</span>
+            <span>23</span>
+            <span>24</span>
+            <span>25</span>
+          </div>
+        </div>
         <input
           type="range"
           min="18"

@@ -1,0 +1,18 @@
+# Hue-UI language file (Dutch)
+# Format: key=value
+
+home_title=Huisje Weltevree
+rooms=Kamers
+devices=Apparaten
+back=Terug
+
+edit_room_widget=Kamer widget bewerken
+remove_room=Verwijder kamer
+change_temp_entity=Wijzig temp. sensor
+change_motion_entity=Wijzig motion sensor
+save=Opslaan
+cancel=Annuleren
+
+settings=Instellingen
+language=Taal
+theme=Thema

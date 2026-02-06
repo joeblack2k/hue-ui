@@ -10,9 +10,11 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride } from './config-loader3.js?v=12.21';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=12.21';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor } from '../ui/helpers2.js?v=12.21';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.45';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.45';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.45';
+import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.45';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.45';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -866,12 +868,6 @@ const STYLES = `
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
   }
 
-  .room-shower-label {
-    color: rgba(118, 185, 255, 0.95);
-    text-shadow: 0 0 10px rgba(118, 185, 255, 0.35);
-    letter-spacing: 0.2px;
-  }
-
   .room-temp-dot {
     width: 9px;
     height: 9px;
@@ -1394,197 +1390,15 @@ const STYLES = `
     animation: fadeIn 0.3s ease-out;
   }
 
-  /* ===== TESLA (DEVICE TILE + SCREEN) ===== */
-  @keyframes teslaDriveWiggle {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-2px); }
-  }
-
-  @keyframes teslaChargeGlow {
-    0%, 100% {
-      box-shadow:
-        var(--hue-shadow-card),
-        0 0 0 1px rgba(120, 195, 255, 0.25) inset,
-        0 0 12px rgba(92, 170, 255, 0.22);
-    }
-    50% {
-      box-shadow:
-        var(--hue-shadow-card),
-        0 0 0 1px rgba(120, 195, 255, 0.35) inset,
-        0 0 22px rgba(92, 170, 255, 0.45);
-    }
-  }
-
-  .device-tile.tesla.charging {
-    animation: teslaChargeGlow 1.8s ease-in-out infinite;
-  }
-
-  .device-tile.tesla.driving .device-icon {
-    animation: teslaDriveWiggle 0.8s ease-in-out infinite;
-  }
-
-  .device-tesla {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .device-tesla-track {
-    height: 7px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.32);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
-    overflow: hidden;
-  }
-
-  .device-tesla-fill {
-    height: 100%;
-    width: 0%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #3ddc70 0%, #b4ff7b 100%);
-    box-shadow: 0 0 10px rgba(61, 220, 112, 0.35);
-    transition: width 260ms ease, background 260ms ease;
-  }
-
-  .device-tile.tesla.charging .device-tesla-fill {
-    background: linear-gradient(90deg, #63bfff 0%, #a8ddff 100%);
-    box-shadow: 0 0 12px rgba(92, 170, 255, 0.45);
-  }
-
-  .device-tesla-legend {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--hue-text-secondary);
-  }
-
-  .device-tesla-percent {
-    font-weight: 800;
-    letter-spacing: 0.2px;
-  }
-
-  .device-tesla-sub {
-    font-size: 11px;
-    color: var(--hue-text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 55%;
-  }
-
-  .tesla-screen {
-    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0));
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .tesla-hero {
-    background: rgba(0, 0, 0, 0.22);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    padding: 14px;
-    box-shadow: var(--hue-shadow-card);
-  }
-
-  .tesla-hero-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .tesla-hero-name {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--hue-text-primary);
-  }
-
-  .tesla-hero-state {
+  /* ===== SHOWER LABEL ===== */
+  .room-shower-label {
     font-size: 12px;
     font-weight: 700;
-    color: var(--hue-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: rgba(118, 185, 255, 0.95);
+    text-shadow: 0 0 8px rgba(100, 170, 255, 0.6);
   }
 
-  .tesla-battery-wrap {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .tesla-battery-track {
-    height: 10px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.38);
-    overflow: hidden;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
-  }
-
-  .tesla-battery-fill {
-    height: 100%;
-    width: 0%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #3ddc70 0%, #b4ff7b 100%);
-    box-shadow: 0 0 16px rgba(61, 220, 112, 0.25);
-    transition: width 260ms ease, background 260ms ease;
-  }
-
-  .tesla-screen.charging .tesla-battery-fill {
-    background: linear-gradient(90deg, #63bfff 0%, #a8ddff 100%);
-    box-shadow: 0 0 18px rgba(92, 170, 255, 0.32);
-  }
-
-  .tesla-battery-meta {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    color: var(--hue-text-secondary);
-    font-size: 12px;
-  }
-
-  .tesla-controls {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .tesla-btn {
-    height: 44px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--hue-text-primary);
-    font-weight: 700;
-    font-size: 13px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    cursor: pointer;
-    box-shadow: var(--hue-shadow-button);
-  }
-
-  .tesla-map {
-    background: rgba(0, 0, 0, 0.22);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    overflow: hidden;
-    box-shadow: var(--hue-shadow-card);
-  }
-
-  .tesla-map iframe {
-    width: 100%;
-    height: 220px;
-    border: 0;
-    display: block;
-  }
+  ${TESLA_TILE_CSS}
 `;
 
 class HueHomeScreen extends HTMLElement {
@@ -1625,15 +1439,7 @@ class HueHomeScreen extends HTMLElement {
     this._suppressRoomClickUntil = 0;
     this._homeRoomEditor = null;
     this._homeRoomSnapshot = null;
-
-    // HA registries (for room editor + Tesla device discovery)
-    this._areaRegistry = null;
-    this._entityRegistry = null;
-    this._deviceRegistry = null;
-
-    // Tesla cached context (derived from registry)
-    this._teslaContextById = new Map();
-    this._teslaContextPromise = null;
+    this._lastRenderedPath = null;
   }
 
   setConfig(config) {
@@ -1644,6 +1450,12 @@ class HueHomeScreen extends HTMLElement {
     if (!this._locationListenerAttached) {
       window.addEventListener('location-changed', this._onLocationChanged);
       this._locationListenerAttached = true;
+    }
+    // Force re-render on reconnect — DOM element listeners (scroll, pager, room tiles)
+    // were on destroyed elements; re-rendering recreates them.
+    if (this._rendered && this._hass && this._roomsIndex) {
+      this._rendered = false;
+      this._render();
     }
   }
 
@@ -1686,6 +1498,17 @@ class HueHomeScreen extends HTMLElement {
       this._roomsIndex = this._normalizeRoomsIndex(this._roomsIndex);
     }
 
+    // Load language file if configured
+    const langFile = this._roomsIndex?.language_file;
+    if (langFile && typeof langFile === 'string') {
+      try {
+        const translations = await loadLanguageFile(langFile);
+        setTranslations(translations);
+      } catch (e) {
+        console.warn('[HueHomeScreen] Failed to load language file:', e);
+      }
+    }
+
     this._loading = false;
     try {
       this._render();
@@ -1702,8 +1525,36 @@ class HueHomeScreen extends HTMLElement {
     const route = this._getRouteState();
     const isPersonScreen = route.kind === 'person';
     const isDeviceScreen = route.kind === 'device';
+    const isHomeScreen = !isPersonScreen && !isDeviceScreen;
+
+    // Handle device screen (Tesla, etc.)
+    if (isDeviceScreen) {
+      const device = (this._roomsIndex.devices || []).find(d => d.id === route.deviceId);
+      const isTesla = device?.kind === 'tesla';
+      if (isTesla) {
+        const teslaResult = renderTeslaScreen(this._hass, this._roomsIndex, route.deviceId);
+        this._rendered = false;
+        this.shadowRoot.innerHTML = `
+          <style>${STYLES}${teslaResult.styles}</style>
+          <ha-card>
+            <div class="hue-root">
+              <div class="hue-background"></div>
+              <div class="content-scroll">
+                ${teslaResult.html}
+              </div>
+            </div>
+          </ha-card>
+        `;
+        teslaResult.attachListeners(this.shadowRoot);
+        this._rendered = true;
+        this._lastRenderedPath = window.location.pathname;
+        this._error = null;
+        return;
+      }
+    }
 
     try {
+      this._rendered = false;
       this.shadowRoot.innerHTML = `
         <style>${STYLES}</style>
         <ha-card>
@@ -1712,8 +1563,6 @@ class HueHomeScreen extends HTMLElement {
             <div class="content-scroll">
               ${isPersonScreen ? `
                 ${this._renderPersonDetail(route.personEntity)}
-              ` : isDeviceScreen ? `
-                ${this._renderDeviceDetail(route.deviceId)}
               ` : `
                 <div class="expanded-header">
                   <div class="large-title"><button class="home-title-button" data-home-action="open_sidebar">${escapeHtml(homeName)}</button></div>
@@ -1722,14 +1571,14 @@ class HueHomeScreen extends HTMLElement {
                 <div class="scroll-content">
                   <div class="home-section">
                     <div class="hue-section-header">
-                      <div class="hue-section-title">ROOMS</div>
+                      <div class="hue-section-title">${escapeHtml(t('ROOMS', 'ROOMS'))}</div>
                     </div>
                     ${this._renderRoomGrid()}
                   </div>
                   ${hasDevices ? `
                   <div class="home-section">
                     <div class="hue-section-header">
-                      <div class="hue-section-title">DEVICES</div>
+                      <div class="hue-section-title">${escapeHtml(t('DEVICES', 'DEVICES'))}</div>
                     </div>
                     ${this._renderDeviceGrid()}
                   </div>
@@ -1737,7 +1586,7 @@ class HueHomeScreen extends HTMLElement {
                 </div>
               `}
             </div>
-            ${isPersonScreen ? '' : `
+            ${isHomeScreen ? `
               <div class="header-pinned">
                 <div class="header-material"></div>
                 <div class="nav-row">
@@ -1745,12 +1594,12 @@ class HueHomeScreen extends HTMLElement {
                   <div class="nav-actions"></div>
                 </div>
               </div>
-            `}
-            ${isPersonScreen ? '' : `
+            ` : ''}
+            ${isHomeScreen ? `
               <div class="weather-fx-overlay" data-effect="cloud" aria-hidden="true">
                 <div class="weather-fx-backdrop"></div>
               </div>
-            `}
+            ` : ''}
             <div class="home-room-editor-overlay">
               <div class="home-room-editor-modal">
                 <div class="home-room-editor-title">Edit room widget</div>
@@ -1769,7 +1618,7 @@ class HueHomeScreen extends HTMLElement {
       `;
 
       this._attachEventListeners();
-      if (!isPersonScreen) {
+      if (isHomeScreen) {
         this._initScrollHandler();
         this._initWidgetPager();
         this._resetHeaderToExpanded();
@@ -1778,6 +1627,7 @@ class HueHomeScreen extends HTMLElement {
       }
       this._updateStates();
       this._rendered = true;
+      this._lastRenderedPath = window.location.pathname;
       this._error = null;
     } catch (error) {
       this._handleCardError(error, 'Failed to build Home screen markup');
@@ -1788,55 +1638,17 @@ class HueHomeScreen extends HTMLElement {
     const dashboardPath = (this._roomsIndex?.dashboard_path || '/hue-ui').replace(/\/+$/, '');
     const currentPath = (window.location.pathname || '').replace(/\/+$/, '');
     const personPrefix = `${dashboardPath}/person/`;
-    const devicePrefix = `${dashboardPath}/device/`;
     if (currentPath.startsWith(personPrefix)) {
       const encodedEntity = currentPath.slice(personPrefix.length);
       const personEntity = decodeURIComponent(encodedEntity || '').trim();
       if (personEntity) return { kind: 'person', personEntity };
     }
+    const devicePrefix = `${dashboardPath}/device/`;
     if (currentPath.startsWith(devicePrefix)) {
       const deviceId = decodeURIComponent(currentPath.slice(devicePrefix.length) || '').trim();
       if (deviceId) return { kind: 'device', deviceId };
     }
     return { kind: 'home', personEntity: '' };
-  }
-
-  _renderDeviceDetail(deviceId) {
-    const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
-    const device = (this._roomsIndex.devices || []).find((d) => String(d?.id) === String(deviceId));
-    if (!device) {
-      return `
-        <div class="tesla-screen">
-          <button class="person-detail-back" data-home-action="go_home" data-path="${escapeHtml(dashboardPath)}">Back</button>
-          <div class="person-detail-card" style="padding:14px;">
-            <div style="font-weight:800;color:var(--hue-text-primary);">Device not found</div>
-            <div style="margin-top:6px;color:var(--hue-text-muted);font-size:12px;">Unknown device id: ${escapeHtml(deviceId)}</div>
-          </div>
-        </div>
-      `;
-    }
-
-    if (String(device.kind || '').toLowerCase() === 'tesla') {
-      return this._renderTeslaScreen(device);
-    }
-
-    return `
-      <div class="tesla-screen">
-        <button class="person-detail-back" data-home-action="go_home" data-path="${escapeHtml(dashboardPath)}">Back</button>
-        <div class="person-detail-card" style="padding:14px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <ha-icon icon="${escapeHtml(device.icon || 'mdi:devices')}"></ha-icon>
-            <div style="font-weight:800;color:var(--hue-text-primary);">${escapeHtml(device.name || device.id)}</div>
-          </div>
-          <div style="margin-top:10px;">
-            <button class="tesla-btn" data-action="more_info" data-entity="${escapeHtml(device.entity || '')}">
-              <ha-icon icon="mdi:information"></ha-icon>
-              More info
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
   }
 
   _renderPersonDetail(personEntityId) {
@@ -2067,12 +1879,13 @@ class HueHomeScreen extends HTMLElement {
     if (!this._roomsIndex) return;
 
     const dashboardPath = (this._roomsIndex.dashboard_path || '/hue-ui').replace(/\/+$/, '');
+    const currentPath = (window.location.pathname || '').replace(/\/+$/, '');
     const personPrefix = `${dashboardPath}/person/`;
-    const isRelevantPath = () => {
-      const path = (window.location.pathname || '').replace(/\/+$/, '');
-      return path === dashboardPath || path.startsWith(personPrefix);
-    };
-    if (!isRelevantPath()) return;
+    const devicePrefix = `${dashboardPath}/device/`;
+    const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const homeWithViewIndex = new RegExp(`^${esc(dashboardPath)}/\\d+$`);
+    const isHome = currentPath === dashboardPath || homeWithViewIndex.test(currentPath);
+    if (!isHome && !currentPath.startsWith(personPrefix) && !currentPath.startsWith(devicePrefix)) return;
 
     if (this._homeReturnRerenderTimer) {
       clearTimeout(this._homeReturnRerenderTimer);
@@ -2081,8 +1894,7 @@ class HueHomeScreen extends HTMLElement {
       this._homeReturnRerenderTimer = null;
       if (!this._hass || !this._roomsIndex) return;
       this._render();
-      const nextPath = (window.location.pathname || '').replace(/\/+$/, '');
-      if (nextPath === dashboardPath) {
+      if (isHome) {
         this._resetHeaderToExpanded();
         this._resetWidgetPager();
       }
@@ -2095,11 +1907,6 @@ class HueHomeScreen extends HTMLElement {
     if (!this._scrollEl) {
       this._initScrollHandler();
     }
-
-    // Recollect expanded children after route changes / re-render (prevents
-    // weather/people from getting "stuck" invisible if we hold stale refs).
-    const widgetPagerEl = this.shadowRoot.querySelector('.expanded-header .widget-pager-frame');
-    this._expandedChildren = [widgetPagerEl].filter(Boolean);
 
     if (this._scrollEl) {
       this._scrollEl.scrollTop = 0;
@@ -2421,15 +2228,6 @@ class HueHomeScreen extends HTMLElement {
     const ledColor = getTemperatureLEDColor(tempValue);
     const tempText = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
 
-    const tempLineMarkup = isShowering
-      ? `<div class="room-temp-line"><span class="room-shower-label">Douchen</span></div>`
-      : `
-          <div class="room-temp-line">
-            <span class="room-temp-dot ${ledColor}" data-sensor="${escapeHtml(tempSensor || '')}"></span>
-            <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">${escapeHtml(tempText)}</span>
-          </div>
-        `;
-
     return `
       <div class="room-tile ${hasLightsOn ? 'lights-on' : ''} ${isShowering ? 'is-showering' : ''}" data-room="${escapeHtml(room.id)}">
         <div class="room-header">
@@ -2444,7 +2242,14 @@ class HueHomeScreen extends HTMLElement {
         </div>
         <div class="room-name">${escapeHtml(room.name)}</div>
         <div class="room-meta">
-          ${tempLineMarkup}
+          ${isShowering ? `
+            <span class="room-shower-label">${escapeHtml(t('Douchen', 'Douchen'))}</span>
+          ` : `
+            <div class="room-temp-line">
+              <span class="room-temp-dot ${ledColor}" data-sensor="${escapeHtml(tempSensor || '')}"></span>
+              <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">${escapeHtml(tempText)}</span>
+            </div>
+          `}
           <div class="room-status">${lightsOn} / ${lights.length} aan</div>
         </div>
         <div class="room-indicators-bottom">
@@ -2471,9 +2276,7 @@ class HueHomeScreen extends HTMLElement {
 
   _renderDeviceTile(device) {
     if (!device || typeof device !== 'object') return '';
-    if (String(device.kind || '').toLowerCase() === 'tesla') {
-      return this._renderTeslaTile(device);
-    }
+    if (device.kind === 'tesla') return renderTeslaTile(this._hass, device);
     const entityId = device.entity;
     const state = entityId ? this._hass?.states[entityId] : null;
     const isActive = this._isDeviceActive(device, state);
@@ -2506,40 +2309,6 @@ class HueHomeScreen extends HTMLElement {
         <div class="device-name">${escapeHtml(device.name)}</div>
         <div class="device-status">${escapeHtml(stateText)}</div>
         ${this._renderPrinterProgress(device)}
-      </div>
-    `;
-  }
-
-  _renderTeslaTile(device) {
-    const name = device.name || 'Tesla';
-    const icon = device.icon || 'mdi:car-electric';
-    const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
-    const deviceId = String(device.id || 'tesla');
-    const targetPath = device.path
-      ? (device.path.startsWith('/') ? device.path : `${dashboardPath}/${device.path}`)
-      : `${dashboardPath}/device/${encodeURIComponent(deviceId)}`;
-
-    void this._ensureTeslaContext(device);
-
-    return `
-      <div class="device-tile tesla"
-           data-device="${escapeHtml(deviceId)}"
-           data-tesla="true"
-           data-path="${escapeHtml(targetPath)}">
-        <div class="device-header">
-          <div class="device-icon-container">
-            <ha-icon class="device-icon" icon="${escapeHtml(icon)}"></ha-icon>
-          </div>
-        </div>
-        <div class="device-name">${escapeHtml(name)}</div>
-        <div class="device-status">--</div>
-        <div class="device-tesla">
-          <div class="device-tesla-track"><div class="device-tesla-fill"></div></div>
-          <div class="device-tesla-legend">
-            <span class="device-tesla-percent">--%</span>
-            <span class="device-tesla-sub">--</span>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -2603,220 +2372,6 @@ class HueHomeScreen extends HTMLElement {
           <span class="device-printer-percent">${progress}%</span>
           <span class="device-printer-eta">${escapeHtml(etaText)}</span>
         </div>
-      </div>
-    `;
-  }
-
-  async _ensureTeslaContext(device) {
-    if (!this._hass?.callWS) return;
-    const id = String(device?.id || '');
-    if (!id) return;
-    if (this._teslaContextById.has(id)) return;
-    if (this._teslaContextPromise) return;
-
-    this._teslaContextPromise = (async () => {
-      await this._ensureRegistriesLoaded();
-
-      const teslaDevices = (this._deviceRegistry || []).filter((d) => {
-        const manu = String(d?.manufacturer || '').toLowerCase();
-        if (!manu.includes('tesla')) return false;
-        const sources = Array.isArray(d?.integration_sources) ? d.integration_sources : [];
-        const type = String(d?.integration_type || '').toLowerCase();
-        const hint = String(device?.tesla?.integration_hint || '').toLowerCase();
-        if (hint) {
-          return sources.map((s) => String(s).toLowerCase()).includes(hint) || type === hint;
-        }
-        return sources.map((s) => String(s).toLowerCase()).includes('tessie') || type === 'tessie';
-      });
-
-      const pickDevice = teslaDevices[0] || null;
-      const ctx = pickDevice ? this._buildTeslaContextFromDevice(pickDevice) : null;
-      if (ctx) {
-        this._teslaContextById.set(String(device.id), ctx);
-      }
-    })().finally(() => {
-      this._teslaContextPromise = null;
-      if (this._rendered) this._updateStates();
-    });
-  }
-
-  async _ensureRegistriesLoaded() {
-    if (!this._hass?.callWS) return;
-    if (Array.isArray(this._deviceRegistry) && Array.isArray(this._entityRegistry) && Array.isArray(this._areaRegistry)) return;
-    try {
-      if (!Array.isArray(this._areaRegistry)) {
-        this._areaRegistry = await this._hass.callWS({ type: 'config/area_registry/list' });
-      }
-      if (!Array.isArray(this._entityRegistry)) {
-        this._entityRegistry = await this._hass.callWS({ type: 'config/entity_registry/list' });
-      }
-      if (!Array.isArray(this._deviceRegistry)) {
-        this._deviceRegistry = await this._hass.callWS({ type: 'config/device_registry/list' });
-      }
-    } catch (error) {
-      console.warn('[HueHomeScreen] Failed to load HA registries:', error);
-    }
-  }
-
-  _buildTeslaContextFromDevice(deviceEntry) {
-    const deviceId = deviceEntry?.id;
-    if (!deviceId || !Array.isArray(this._entityRegistry)) return null;
-    const entityIds = this._entityRegistry
-      .filter((e) => e?.device_id === deviceId && !e?.disabled_by)
-      .map((e) => e.entity_id)
-      .filter(Boolean);
-
-    const pick = (domain, includesAny) => {
-      const list = entityIds.filter((id) => String(id).startsWith(`${domain}.`));
-      const lowered = list.map((id) => id.toLowerCase());
-      for (const needle of includesAny) {
-        const idx = lowered.findIndex((id) => id.includes(needle));
-        if (idx >= 0) return list[idx];
-      }
-      return list[0] || '';
-    };
-
-    return {
-      device_id: deviceId,
-      name: deviceEntry?.name || 'Tesla',
-      entities: {
-        battery_level: pick('sensor', ['battery_level']),
-        battery_range: pick('sensor', ['battery_range_estimate', 'battery_range', 'range']),
-        time_to_full: pick('sensor', ['time_to_full_charge']),
-        charging_bin: pick('binary_sensor', ['_charging', 'charging']),
-        charging_sensor: pick('sensor', ['charging']),
-        speed: pick('sensor', ['speed']),
-        shift_state: pick('sensor', ['shift_state']),
-        location: pick('device_tracker', ['location', 'route']),
-        lock: pick('lock', ['_lock', 'lock']),
-        climate: pick('climate', ['climate']),
-        sentry: pick('switch', ['sentry']),
-        defrost: pick('switch', ['defrost']),
-        charge: pick('switch', ['charge']),
-        charge_port: pick('cover', ['charge_port']),
-        trunk: pick('cover', ['trunk']),
-        frunk: pick('cover', ['frunk']),
-      },
-    };
-  }
-
-  _getTeslaLiveData(device) {
-    const ctx = this._teslaContextById.get(String(device?.id || ''));
-    if (!ctx) return null;
-    const e = ctx.entities || {};
-    const getNum = (entityId) => {
-      const raw = Number.parseFloat(this._hass?.states?.[entityId]?.state);
-      return Number.isFinite(raw) ? raw : null;
-    };
-    const getStr = (entityId) => String(this._hass?.states?.[entityId]?.state || '').trim();
-    const getBoolOn = (entityId) => String(this._hass?.states?.[entityId]?.state || '').toLowerCase() === 'on';
-
-    const soc = getNum(e.battery_level);
-    const range = getNum(e.battery_range);
-    const rangeUnit = String(this._hass?.states?.[e.battery_range]?.attributes?.unit_of_measurement || '').toLowerCase();
-    const rangeKm = range == null ? null : (rangeUnit.includes('mi') ? range * 1.60934 : range);
-
-    const charging = (e.charging_bin && getBoolOn(e.charging_bin))
-      || (e.charging_sensor && getStr(e.charging_sensor).toLowerCase().includes('charging'));
-
-    const hoursToFull = getNum(e.time_to_full);
-    const speed = getNum(e.speed);
-    const shift = getStr(e.shift_state).toUpperCase();
-    const driving = (speed != null && speed > 1) || (shift && shift !== 'P' && shift !== 'UNKNOWN');
-
-    return {
-      soc: soc == null ? null : Math.max(0, Math.min(100, Math.round(soc))),
-      rangeKm: rangeKm == null ? null : Math.max(0, Math.round(rangeKm)),
-      charging,
-      hoursToFull: hoursToFull == null ? null : Math.max(0, hoursToFull),
-      driving,
-      ctx,
-    };
-  }
-
-  _formatTeslaEta(hoursToFull) {
-    if (!Number.isFinite(hoursToFull) || hoursToFull <= 0) return '--';
-    const minutes = Math.round(hoursToFull * 60);
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h <= 0) return `${m} min`;
-    return `${h}u ${String(m).padStart(2, '0')}m`;
-  }
-
-  _renderTeslaScreen(device) {
-    const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
-    const live = this._getTeslaLiveData(device);
-    const name = escapeHtml(device.name || live?.ctx?.name || 'Tesla');
-    const soc = live?.soc ?? null;
-    const rangeKm = live?.rangeKm ?? null;
-    const charging = !!live?.charging;
-    const driving = !!live?.driving;
-    const eta = charging ? this._formatTeslaEta(live?.hoursToFull) : '';
-
-    const ctx = live?.ctx;
-    const e = ctx?.entities || {};
-
-    const locationState = e.location ? this._hass?.states?.[e.location] : null;
-    const lat = Number(locationState?.attributes?.latitude);
-    const lon = Number(locationState?.attributes?.longitude);
-    const mapUrl = Number.isFinite(lat) && Number.isFinite(lon)
-      ? `https://www.google.com/maps?q=${lat},${lon}&z=16&output=embed`
-      : '';
-
-    const pct = Number.isFinite(soc) ? soc : 0;
-    const rangeText = rangeKm == null ? '-- km' : `${rangeKm} km`;
-    const stateLabel = charging ? 'Charging' : driving ? 'Driving' : 'Parked';
-
-    let fill = 'linear-gradient(90deg, #3ddc70 0%, #b4ff7b 100%)';
-    if (!charging) {
-      if (pct < 30) fill = 'linear-gradient(90deg, #ff4d4d 0%, #ff9a9a 100%)';
-      else if (pct < 50) fill = 'linear-gradient(90deg, #ffb84d 0%, #ffe08a 100%)';
-    } else {
-      fill = 'linear-gradient(90deg, #63bfff 0%, #a8ddff 100%)';
-    }
-
-    void this._ensureTeslaContext(device);
-
-    return `
-      <div class="tesla-screen ${charging ? 'charging' : ''}">
-        <button class="person-detail-back" data-home-action="go_home" data-path="${escapeHtml(dashboardPath)}">Back</button>
-        <div class="tesla-hero">
-          <div class="tesla-hero-top">
-            <div>
-              <div class="tesla-hero-name">${name}</div>
-              <div class="tesla-hero-state">${escapeHtml(stateLabel)}${charging && eta ? ` · ${escapeHtml(eta)}` : ''}</div>
-            </div>
-            <ha-icon icon="mdi:car-electric"></ha-icon>
-          </div>
-          <div class="tesla-battery-wrap">
-            <div class="tesla-battery-track">
-              <div class="tesla-battery-fill" style="width:${pct}%;background:${escapeHtml(fill)};"></div>
-            </div>
-            <div class="tesla-battery-meta">
-              <span><strong>${Number.isFinite(soc) ? soc : '--'}%</strong></span>
-              <span>${escapeHtml(rangeText)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="tesla-controls">
-          ${e.lock ? `
-            <button class="tesla-btn" data-action="lock" data-entity="${escapeHtml(e.lock)}"><ha-icon icon="mdi:lock"></ha-icon>Lock</button>
-            <button class="tesla-btn" data-action="unlock" data-entity="${escapeHtml(e.lock)}"><ha-icon icon="mdi:lock-open-variant"></ha-icon>Unlock</button>
-          ` : ''}
-          ${e.sentry ? `<button class="tesla-btn" data-action="toggle" data-entity="${escapeHtml(e.sentry)}"><ha-icon icon="mdi:shield-car"></ha-icon>Sentry</button>` : ''}
-          ${e.defrost ? `<button class="tesla-btn" data-action="toggle" data-entity="${escapeHtml(e.defrost)}"><ha-icon icon="mdi:snowflake"></ha-icon>Defrost</button>` : ''}
-          ${e.charge ? `<button class="tesla-btn" data-action="toggle" data-entity="${escapeHtml(e.charge)}"><ha-icon icon="mdi:ev-station"></ha-icon>Charge</button>` : ''}
-          ${e.charge_port ? `<button class="tesla-btn" data-action="open_cover" data-entity="${escapeHtml(e.charge_port)}"><ha-icon icon="mdi:car-door"></ha-icon>Charge port</button>` : ''}
-          ${e.trunk ? `<button class="tesla-btn" data-action="open_cover" data-entity="${escapeHtml(e.trunk)}"><ha-icon icon="mdi:car-back"></ha-icon>Trunk</button>` : ''}
-          ${e.frunk ? `<button class="tesla-btn" data-action="open_cover" data-entity="${escapeHtml(e.frunk)}"><ha-icon icon="mdi:car"></ha-icon>Frunk</button>` : ''}
-        </div>
-
-        ${mapUrl ? `
-          <div class="tesla-map">
-            <iframe src="${escapeHtml(mapUrl)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-          </div>
-        ` : ''}
       </div>
     `;
   }
@@ -2944,9 +2499,10 @@ class HueHomeScreen extends HTMLElement {
         const deviceId = tile.dataset.device;
         const device = this._roomsIndex.devices?.find(d => d.id === deviceId);
 
-        const explicitPath = tile.dataset.path;
-        if (explicitPath) {
-          window.history.pushState(null, '', explicitPath);
+        // Tesla and other kind-based devices navigate to /device/{id}
+        if (device?.kind === 'tesla') {
+          const dashboardPath = this._roomsIndex.dashboard_path || '/hue-ui';
+          window.history.pushState(null, '', `${dashboardPath}/device/${deviceId}`);
           window.dispatchEvent(new Event('location-changed'));
           return;
         }
@@ -3060,17 +2616,15 @@ class HueHomeScreen extends HTMLElement {
     const status = this.shadowRoot.querySelector('.home-room-editor-status');
     if (!overlay || !tempSelect || !motionSelect) return;
 
-    // Async fill from HA registry (room-scoped). Put a placeholder immediately so
-    // the UI never renders an empty/broken select.
-    tempSelect.innerHTML = '<option value="">Loading...</option>';
-    motionSelect.innerHTML = '<option value="">Loading...</option>';
+    const tempOptions = this._collectRoomSensorOptions(room, 'temp');
+    const motionOptions = this._collectRoomSensorOptions(room, 'motion');
+    tempSelect.innerHTML = this._renderHomeRoomSensorOptions(tempOptions, this._homeRoomEditor.temperature);
+    motionSelect.innerHTML = this._renderHomeRoomSensorOptions(motionOptions, this._homeRoomEditor.motion);
     tempSelect.style.display = 'none';
     motionSelect.style.display = 'none';
     if (title) title.textContent = `Edit room widget · ${room.name || room.id}`;
     if (status) status.textContent = '';
     overlay.classList.add('is-open');
-
-    void this._populateHomeRoomEditorSelects(room);
   }
 
   _closeHomeRoomEditor({ discardChanges = false } = {}) {
@@ -3087,116 +2641,27 @@ class HueHomeScreen extends HTMLElement {
     this._homeRoomSnapshot = null;
   }
 
-  async _populateHomeRoomEditorSelects(room) {
-    if (!this._hass?.callWS) return;
-    const editor = this._homeRoomEditor;
-    if (!editor || editor.roomId !== room?.id) return;
-
-    const tempSelect = this.shadowRoot.querySelector('[data-room-editor-select="temp"]');
-    const motionSelect = this.shadowRoot.querySelector('[data-room-editor-select="motion"]');
-    if (!tempSelect || !motionSelect) return;
-
-    const normalize = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    try {
-      if (!Array.isArray(this._areaRegistry)) {
-        this._areaRegistry = await this._hass.callWS({ type: 'config/area_registry/list' });
-      }
-      if (!Array.isArray(this._entityRegistry)) {
-        this._entityRegistry = await this._hass.callWS({ type: 'config/entity_registry/list' });
-      }
-      if (!Array.isArray(this._deviceRegistry)) {
-        this._deviceRegistry = await this._hass.callWS({ type: 'config/device_registry/list' });
-      }
-    } catch (error) {
-      console.warn('[HueHomeScreen] Failed to load registry lists for editor dropdowns:', error);
-      return;
-    }
-
-    // Editor could have been closed while we were awaiting.
-    if (!this._homeRoomEditor || this._homeRoomEditor.roomId !== room?.id) return;
-
-    const roomNameNorm = normalize(room?.name || room?.id);
-    const roomIdNorm = normalize(room?.id || '');
-    const areaIdFromConfig = room?.area_id || null;
-    let roomAreaId = areaIdFromConfig;
-
-    if (!roomAreaId) {
-      const areaMatch = this._areaRegistry.find((area) => {
-        const areaId = area?.area_id || area?.id || '';
-        const areaName = normalize(area?.name || areaId);
-        return areaName === roomNameNorm || areaName === roomIdNorm;
-      });
-      roomAreaId = areaMatch?.area_id || areaMatch?.id || null;
-    }
-
-    const deviceAreaMap = new Map();
-    this._deviceRegistry.forEach((device) => {
-      const deviceId = device?.id;
-      const areaId = device?.area_id || null;
-      if (deviceId) deviceAreaMap.set(deviceId, areaId);
-    });
-
-    const entryMatchesRoom = (entry) => {
-      if (!entry?.entity_id) return false;
-
-      if (roomAreaId) {
-        if (entry?.area_id === roomAreaId) return true;
-        const byDevice = entry?.device_id ? deviceAreaMap.get(entry.device_id) : null;
-        return byDevice === roomAreaId;
-      }
-
-      // Heuristic fallback if the room has no area in HA.
-      const entityIdNorm = normalize(entry?.entity_id || '');
-      const nameNorm = normalize(entry?.name || entry?.original_name || '');
-      const state = this._hass?.states?.[entry?.entity_id];
-      const friendlyNorm = normalize(state?.attributes?.friendly_name || '');
-      return entityIdNorm.includes(roomIdNorm) || nameNorm.includes(roomNameNorm) || friendlyNorm.includes(roomNameNorm);
-    };
-
-    const candidates = this._entityRegistry.filter((entry) => {
-      if (!entryMatchesRoom(entry)) return false;
-      if (entry?.disabled_by) return false;
-      return true;
-    });
-
-    const toOption = (entityId) => {
+  _collectRoomSensorOptions(room, kind) {
+    const list = [];
+    const add = (entityId) => {
+      if (!entityId || typeof entityId !== 'string') return;
+      if (list.some((item) => item.entity_id === entityId)) return;
       const state = this._hass?.states?.[entityId];
       const name = state?.attributes?.friendly_name || entityId;
-      return { entity_id: entityId, name };
+      list.push({ entity_id: entityId, name });
     };
 
-    const tempOptions = candidates
-      .filter((entry) => String(entry.entity_id).startsWith('sensor.'))
-      .map((entry) => entry.entity_id)
-      .filter((entityId) => !!this._hass?.states?.[entityId])
-      .filter((entityId) => {
-        const st = this._hass.states[entityId];
-        const dc = String(st?.attributes?.device_class || '').toLowerCase();
-        const unit = String(st?.attributes?.unit_of_measurement || '').toLowerCase();
-        return dc === 'temperature' || unit.includes('°c') || unit.includes('c');
-      })
-      .map(toOption)
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    const motionCandidates = candidates
-      .filter((entry) => String(entry.entity_id).startsWith('binary_sensor.'))
-      .map((entry) => entry.entity_id)
-      .filter((entityId) => !!this._hass?.states?.[entityId]);
-
-    const motionPreferred = motionCandidates.filter((entityId) => {
-      const st = this._hass.states[entityId];
-      const dc = String(st?.attributes?.device_class || '').toLowerCase();
-      const name = String(st?.attributes?.friendly_name || '').toLowerCase();
-      return dc === 'motion' || dc === 'occupancy' || name.includes('motion') || name.includes('beweging');
+    const sensorsObj = room?.sensors && typeof room.sensors === 'object' ? room.sensors : {};
+    Object.values(sensorsObj).forEach((entityId) => {
+      const domain = String(entityId || '').split('.')[0];
+      if (kind === 'temp' && domain === 'sensor') add(entityId);
+      if (kind === 'motion' && domain === 'binary_sensor') add(entityId);
     });
 
-    const motionOptions = (motionPreferred.length ? motionPreferred : motionCandidates)
-      .map(toOption)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    if (kind === 'temp') add(room?.sensors?.temperature);
+    if (kind === 'motion') add(room?.sensors?.motion);
 
-    tempSelect.innerHTML = this._renderHomeRoomSensorOptions(tempOptions, this._homeRoomEditor.temperature);
-    motionSelect.innerHTML = this._renderHomeRoomSensorOptions(motionOptions, this._homeRoomEditor.motion);
+    return list.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   _renderHomeRoomSensorOptions(options, selected) {
@@ -3265,59 +2730,9 @@ class HueHomeScreen extends HTMLElement {
 
   _openHomeAssistantSidebar() {
     hapticFeedback();
-    const ha = document.querySelector('home-assistant');
-    if (!ha) return;
-
-    const dispatch = (target) => {
-      try {
-        if (!target?.dispatchEvent) return false;
-        const ev = new Event('hass-toggle-menu', { bubbles: true, composed: true });
-        target.dispatchEvent(ev);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    // Common HA event targets.
-    dispatch(ha);
-    dispatch(ha.shadowRoot?.querySelector('home-assistant-main'));
-    dispatch(document);
-    dispatch(window);
-
-    // Kiosk/companion sometimes blocks the event; click the hamburger/menu button directly.
-    const findNodeDeep = (root, matcher) => {
-      if (!root) return null;
-      const queue = [root];
-      while (queue.length) {
-        const node = queue.shift();
-        try {
-          if (matcher(node)) return node;
-        } catch {
-          // ignore matcher errors
-        }
-        if (node?.shadowRoot) queue.push(node.shadowRoot);
-        const children = node?.children || node?.childNodes || [];
-        for (const child of children) queue.push(child);
-      }
-      return null;
-    };
-
-    const menuButton = findNodeDeep(ha, (node) => {
-      if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-      if (typeof node.matches !== 'function') return false;
-      return (
-        node.matches('ha-icon-button[icon="mdi:menu"]')
-        || node.matches('ha-icon-button[icon="mdi:menu-open"]')
-        || node.matches('ha-icon-button[aria-label="Menu"]')
-        || node.matches('ha-icon-button[aria-label="menu"]')
-        || node.matches('[data-menu-button]')
-      );
-    });
-
-    if (menuButton && typeof menuButton.click === 'function') {
-      menuButton.click();
-    }
+    // Escape hatch: hard-navigate to HA Settings to exit kiosk mode.
+    // Use assign() for a full page load — SPA routing cannot be trusted in kiosk.
+    window.location.assign('/config/dashboard');
   }
 
   // ===== State Updates =====
@@ -3345,56 +2760,42 @@ class HueHomeScreen extends HTMLElement {
     });
 
     // Update room tiles
-	    this.shadowRoot.querySelectorAll('.room-tile').forEach(tile => {
-	      const roomId = tile.dataset.room;
-	      const room = this._roomsIndex.rooms?.find(r => r.id === roomId);
-	      if (!room) return;
+    this.shadowRoot.querySelectorAll('.room-tile').forEach(tile => {
+      const roomId = tile.dataset.room;
+      const room = this._roomsIndex.rooms?.find(r => r.id === roomId);
+      if (!room) return;
 
-	      const showerSensor = room.sensors?.shower;
-	      const isShoweringNow = showerSensor ? this._isEntityActive(showerSensor) : false;
-
-	      const lights = room.lights || [];
-	      const lightsOn = lights.filter(id => this._hass?.states[id]?.state === 'on').length;
-	      const statusEl = tile.querySelector('.room-status');
-	      const toggleTrack = tile.querySelector('.toggle-track');
-	      const toggleThumb = tile.querySelector('.toggle-thumb');
-	      const tempSensor = room.sensors?.temperature;
-	      const tempValue = tempSensor ? parseFloat(this._hass?.states[tempSensor]?.state) : null;
-	      const tempLine = tile.querySelector('.room-temp-line');
-	      let tempValueEl = tile.querySelector('.room-temp-value');
-	      let tempDot = tile.querySelector('.room-temp-dot');
+      const lights = room.lights || [];
+      const lightsOn = lights.filter(id => this._hass?.states[id]?.state === 'on').length;
+      const statusEl = tile.querySelector('.room-status');
+      const toggleTrack = tile.querySelector('.toggle-track');
+      const toggleThumb = tile.querySelector('.toggle-thumb');
+      const tempSensor = room.sensors?.temperature;
+      const tempValue = tempSensor ? parseFloat(this._hass?.states[tempSensor]?.state) : null;
+      const tempLine = tile.querySelector('.room-temp-line');
+      const tempValueEl = tile.querySelector('.room-temp-value');
+      const tempDot = tile.querySelector('.room-temp-dot');
 
       if (statusEl) {
         statusEl.textContent = `${lightsOn} / ${lights.length} aan`;
       }
-	      if (tempLine) {
-	        // Showering replaces temp line content with "Douchen".
-	        if (isShoweringNow) {
-	          if (!tempLine.querySelector('.room-shower-label')) {
-	            tempLine.innerHTML = '<span class="room-shower-label">Douchen</span>';
-	          }
-	        } else {
-	          if (!tempLine.querySelector('.room-temp-value') || !tempLine.querySelector('.room-temp-dot')) {
-	            tempLine.innerHTML = `
-	              <span class="room-temp-dot unknown" data-sensor="${escapeHtml(tempSensor || '')}"></span>
-	              <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">--</span>
-	            `;
-	            tempValueEl = tempLine.querySelector('.room-temp-value');
-	            tempDot = tempLine.querySelector('.room-temp-dot');
-	          }
-	        }
+      const showerLabel = tile.querySelector('.room-shower-label');
+      const showerSensorUpdate = room.sensors?.shower;
+      const isShoweringNow = showerSensorUpdate ? this._isEntityActive(showerSensorUpdate) : false;
 
-	        // Keep visible during shower even without a temp sensor.
-	        tempLine.style.display = (isShoweringNow || tempSensor) ? '' : 'none';
-	      }
-
-	      if (!isShoweringNow && tempValueEl) {
-	        tempValueEl.textContent = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
-	      }
-	      if (!isShoweringNow && tempDot) {
-	        tempDot.classList.remove('red', 'orange', 'blue', 'unknown');
-	        tempDot.classList.add(getTemperatureLEDColor(tempValue));
-	      }
+      if (showerLabel) {
+        showerLabel.style.display = isShoweringNow ? '' : 'none';
+      }
+      if (tempValueEl) {
+        tempValueEl.textContent = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
+      }
+      if (tempLine) {
+        tempLine.style.display = (tempSensor && !isShoweringNow) ? '' : 'none';
+      }
+      if (tempDot) {
+        tempDot.classList.remove('red', 'orange', 'blue', 'unknown');
+        tempDot.classList.add(getTemperatureLEDColor(tempValue));
+      }
 
       if (lightsOn > 0) {
         tile.classList.add('lights-on');
@@ -3406,12 +2807,13 @@ class HueHomeScreen extends HTMLElement {
         toggleThumb?.classList.remove('on');
       }
 
-	      if (showerSensor) {
-	        tile.classList.toggle('is-showering', isShoweringNow);
-	      } else {
-	        tile.classList.remove('is-showering');
-	      }
-	    });
+      const showerSensor = room.sensors?.shower;
+      if (showerSensor) {
+        tile.classList.toggle('is-showering', this._isEntityActive(showerSensor));
+      } else {
+        tile.classList.remove('is-showering');
+      }
+    });
 
     // Update motion indicators
     this.shadowRoot.querySelectorAll('.motion-indicator').forEach(indicator => {
@@ -3423,16 +2825,8 @@ class HueHomeScreen extends HTMLElement {
     // Update device tiles
     this.shadowRoot.querySelectorAll('.device-tile').forEach(tile => {
       const entityId = tile.dataset.entity;
-      const isTesla = tile.dataset.tesla === 'true';
-
-      if (isTesla) {
-        const deviceId = tile.dataset.device;
-        const device = this._roomsIndex.devices?.find(d => d.id === deviceId);
-        if (device) this._updateTeslaTile(tile, device);
-        return;
-      }
-
       if (!entityId) return;
+
       const state = this._hass?.states[entityId];
       if (!state) return;
 
@@ -3482,50 +2876,6 @@ class HueHomeScreen extends HTMLElement {
         }
       }
     });
-  }
-
-  _updateTeslaTile(tile, device) {
-    const live = this._getTeslaLiveData(device);
-    const statusEl = tile.querySelector('.device-status');
-    const fillEl = tile.querySelector('.device-tesla-fill');
-    const pctEl = tile.querySelector('.device-tesla-percent');
-    const subEl = tile.querySelector('.device-tesla-sub');
-
-    if (!live) {
-      if (statusEl) statusEl.textContent = 'Unavailable';
-      if (pctEl) pctEl.textContent = '--%';
-      if (subEl) subEl.textContent = '--';
-      if (fillEl) fillEl.style.width = '0%';
-      tile.classList.remove('charging', 'driving');
-      void this._ensureTeslaContext(device);
-      return;
-    }
-
-    const pct = Number.isFinite(live.soc) ? live.soc : 0;
-    const charging = !!live.charging;
-    const driving = !!live.driving;
-    tile.classList.toggle('charging', charging);
-    tile.classList.toggle('driving', driving);
-
-    let fill = 'linear-gradient(90deg, #3ddc70 0%, #b4ff7b 100%)';
-    if (!charging) {
-      if (pct < 30) fill = 'linear-gradient(90deg, #ff4d4d 0%, #ff9a9a 100%)';
-      else if (pct < 50) fill = 'linear-gradient(90deg, #ffb84d 0%, #ffe08a 100%)';
-    } else {
-      fill = 'linear-gradient(90deg, #63bfff 0%, #a8ddff 100%)';
-    }
-
-    if (fillEl) {
-      fillEl.style.width = `${pct}%`;
-      fillEl.style.background = fill;
-    }
-    if (pctEl) pctEl.textContent = `${pct}%`;
-
-    const eta = charging ? this._formatTeslaEta(live.hoursToFull) : '';
-    const rangeText = live.rangeKm == null ? '-- km' : `${live.rangeKm} km`;
-    const statusText = charging ? 'Charging' : driving ? 'Driving' : 'Parked';
-    if (statusEl) statusEl.textContent = statusText;
-    if (subEl) subEl.textContent = charging && eta ? eta : rangeText;
   }
 
   _getPersonStateClass(personState) {

@@ -1,0 +1,18 @@
+# Hue-UI language file (English)
+# Format: key=value
+
+home_title=Huisje Weltevree
+rooms=Rooms
+devices=Devices
+back=Back
+
+edit_room_widget=Edit room widget
+remove_room=Remove room
+change_temp_entity=Change temp. entity
+change_motion_entity=Change motion entity
+save=Save
+cancel=Cancel
+
+settings=Settings
+language=Language
+theme=Theme

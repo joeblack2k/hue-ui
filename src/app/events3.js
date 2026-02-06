@@ -26,22 +26,6 @@ export function handleAction(hass, action, entity, options = {}) {
       hass.callService('homeassistant', 'turn_off', { entity_id: entity });
       break;
 
-    case 'lock':
-      hass.callService('lock', 'lock', { entity_id: entity });
-      break;
-
-    case 'unlock':
-      hass.callService('lock', 'unlock', { entity_id: entity });
-      break;
-
-    case 'open_cover':
-      hass.callService('cover', 'open_cover', { entity_id: entity });
-      break;
-
-    case 'close_cover':
-      hass.callService('cover', 'close_cover', { entity_id: entity });
-      break;
-
     case 'set_brightness':
       if (options.brightness !== undefined) {
         hass.callService('light', 'turn_on', {
@@ -124,9 +108,36 @@ export function handleAction(hass, action, entity, options = {}) {
       }
       break;
 
+    case 'media_seek': {
+      const seek = Number(options.seek_position);
+      if (Number.isFinite(seek) && seek >= 0) {
+        hass.callService('media_player', 'media_seek', {
+          entity_id: entity,
+          seek_position: seek,
+        });
+      }
+      break;
+    }
+
     case 'activate_scene':
       hapticFeedback();
       hass.callService('scene', 'turn_on', { entity_id: entity });
+      break;
+
+    case 'lock':
+      hass.callService('lock', 'lock', { entity_id: entity });
+      break;
+
+    case 'unlock':
+      hass.callService('lock', 'unlock', { entity_id: entity });
+      break;
+
+    case 'open_cover':
+      hass.callService('cover', 'open_cover', { entity_id: entity });
+      break;
+
+    case 'close_cover':
+      hass.callService('cover', 'close_cover', { entity_id: entity });
       break;
 
     case 'press':
@@ -145,6 +156,28 @@ export function handleAction(hass, action, entity, options = {}) {
         });
       }
       break;
+
+    case 'number_set_value': {
+      const value = Number(options.value);
+      if (Number.isFinite(value)) {
+        hass.callService('number', 'set_value', {
+          entity_id: entity,
+          value,
+        });
+      }
+      break;
+    }
+
+    case 'select_option': {
+      const option = String(options.option ?? '').trim();
+      if (option) {
+        hass.callService('select', 'select_option', {
+          entity_id: entity,
+          option,
+        });
+      }
+      break;
+    }
 
     case 'more_info':
       fireMoreInfo(hass, entity);

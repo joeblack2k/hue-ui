@@ -338,6 +338,30 @@ export function getWeatherEmoji(condition) {
 }
 
 /**
+ * Translation store — populated by loadLanguageFile() in config-loader3.js
+ */
+let _translations = {};
+
+/**
+ * Set the translations dictionary
+ * @param {object} translations - key-value translation map
+ */
+export function setTranslations(translations) {
+  _translations = translations && typeof translations === 'object' ? translations : {};
+}
+
+/**
+ * Translate a key using the loaded language file
+ * @param {string} key - translation key
+ * @param {string} fallback - fallback value if key not found
+ * @returns {string} translated string or fallback
+ */
+export function t(key, fallback) {
+  if (_translations[key] !== undefined) return _translations[key];
+  return fallback !== undefined ? fallback : key;
+}
+
+/**
  * Get temperature LED color based on temperature value
  * @param {number} temp - Temperature in Celsius
  * @returns {string} LED color class (red, orange, blue, unknown)

@@ -72,24 +72,21 @@ export function getRoomsIndexOverride() {
     const raw = storage.getItem(ROOMS_INDEX_OVERRIDE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // Safety: a corrupt/empty override can wipe the UI. If it doesn't look like
-    // a real rooms index, ignore it (and clear it) so the UI falls back to disk.
-    const rooms = parsed?.rooms;
-    const looksValid = parsed
-      && typeof parsed === 'object'
-      && Array.isArray(rooms)
-      && rooms.length > 0;
-    if (!looksValid) {
-      try {
-        storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
-      } catch (_e) {
-        // ignore
-      }
+    // Validate: must be object with non-empty rooms array
+    if (!parsed || typeof parsed !== 'object') {
+      console.warn('[Config Loader] Rooms index override is not an object, clearing.');
+      storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
+      return null;
+    }
+    if (!Array.isArray(parsed.rooms) || parsed.rooms.length === 0) {
+      console.warn('[Config Loader] Rooms index override has no rooms, clearing.');
+      storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
       return null;
     }
     return parsed;
   } catch (error) {
-    console.warn('[Config Loader] Failed to parse rooms index override:', error);
+    console.warn('[Config Loader] Failed to parse rooms index override, clearing:', error);
+    try { storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY); } catch (_) { /* ignore */ }
     return null;
   }
 }
@@ -187,6 +184,46 @@ export function getRoomFromIndex(index, roomId) {
   return index.rooms?.find(r => r.id === roomId) || null;
 }
 
+/**
+ * Load a language file and return a key-value translations object.
+ * Language file format: one key=value per line, # comments, blank lines ignored.
+ * @param {string} languageFile - URL path to the language file
+ * @returns {Promise<object>} translations map
+ */
+let _langCache = null;
+let _langCacheUrl = null;
+
+export async function loadLanguageFile(languageFile) {
+  if (!languageFile || typeof languageFile !== 'string') return {};
+  if (_langCacheUrl === languageFile && _langCache) return _langCache;
+
+  try {
+    const cacheBuster = `${languageFile.includes('?') ? '&' : '?'}_cb=${Date.now()}`;
+    const response = await fetch(languageFile + cacheBuster);
+    if (!response.ok) {
+      console.warn('[Config Loader] Failed to load language file:', response.status);
+      return {};
+    }
+    const text = await response.text();
+    const translations = {};
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex < 1) continue;
+      const key = trimmed.slice(0, eqIndex).trim();
+      const value = trimmed.slice(eqIndex + 1).trim();
+      if (key) translations[key] = value;
+    }
+    _langCache = translations;
+    _langCacheUrl = languageFile;
+    return translations;
+  } catch (error) {
+    console.warn('[Config Loader] Error loading language file:', error);
+    return {};
+  }
+}
+
 export default {
   loadRoomsIndex,
   loadRoomConfig,
@@ -198,4 +235,5 @@ export default {
   saveRoomConfigOverride,
   clearRoomConfigOverride,
   getRoomFromIndex,
+  loadLanguageFile,
 };
