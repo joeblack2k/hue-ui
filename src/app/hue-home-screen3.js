@@ -10,11 +10,11 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.46';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.46';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.46';
-import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.46';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.46';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.47';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.47';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.47';
+import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.47';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.47';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1567,12 +1567,6 @@ class HueHomeScreen extends HTMLElement {
                   ${this._renderWidgetPager()}
                 </div>
                 <div class="scroll-content">
-                  <div class="home-section">
-                    <div class="hue-section-header">
-                      <div class="hue-section-title">${escapeHtml(t('ROOMS', 'ROOMS'))}</div>
-                    </div>
-                    ${this._renderRoomGrid()}
-                  </div>
                   ${hasDevices ? `
                   <div class="home-section">
                     <div class="hue-section-header">
@@ -1581,6 +1575,12 @@ class HueHomeScreen extends HTMLElement {
                     ${this._renderDeviceGrid()}
                   </div>
                   ` : ''}
+                  <div class="home-section">
+                    <div class="hue-section-header">
+                      <div class="hue-section-title">${escapeHtml(t('ROOMS', 'ROOMS'))}</div>
+                    </div>
+                    ${this._renderRoomGrid()}
+                  </div>
                 </div>
               `}
             </div>

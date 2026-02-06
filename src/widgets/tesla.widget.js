@@ -4,7 +4,7 @@
  * Battery bar (color-coded), SOC %, range, status, charging/driving animations.
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.46';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.47';
 
 /**
  * Render a Tesla device tile for the home screen

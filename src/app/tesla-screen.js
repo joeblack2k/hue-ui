@@ -7,8 +7,8 @@
  * and the device kind is "tesla".
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.46';
-import { handleAction, hapticFeedback } from './events3.js?v=3.1.46';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.47';
+import { handleAction, hapticFeedback } from './events3.js?v=3.1.47';
 
 const TESLA_SCREEN_STYLES = `
   /* Root structure: pinned header + separate scroll container (same as rooms). */

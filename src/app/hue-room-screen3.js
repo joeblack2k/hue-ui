@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.46';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.46';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t } from '../ui/helpers2.js?v=3.1.46';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.46';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.46';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.46';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.46';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.46';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.46';
+} from './config-loader3.js?v=3.1.47';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.47';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t } from '../ui/helpers2.js?v=3.1.47';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.47';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.47';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.47';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.47';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.47';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.47';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
