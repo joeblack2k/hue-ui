@@ -26,7 +26,7 @@ On Home Assistant OS/Supervised you can do this via Samba/SSH add-on.
 
 Settings -> Dashboards -> Resources -> Add resource:
 
-- URL: `/local/hue-ui/src/hue-ui.js?v=12.22`
+- URL: `/local/hue-ui/src/hue-ui.js?v=12.23`
 - Type: `JavaScript Module`
 
 If you update files later, bump the `v=` query to force a refresh.

@@ -4,6 +4,10 @@ Important, user-visible changes only. See commit history for full detail.
 
 ## Unreleased
 
+- Home: fixed intermittent disappearance of people/weather widgets after returning to Home (route change + stale header refs).
+- Rooms: camera cards prefer live MJPEG stream, keep tokens fresh, and fall back to snapshot polling to prevent flashing/broken image loops.
+- Rooms: back button navigation now triggers on pointerdown for more reliable taps.
+
 - Home: room editor temp/motion dropdowns now query HA registries and filter by the edited room (instead of only config sensors).
 - Home: "Badkamer" shower state shows "Douchen" in the temp line while showering.
 - Rooms: light-control popup is larger, removed color/warmth mode buttons, added step-based haptics, and prevented slider jumpiness on release.

@@ -1214,6 +1214,8 @@ class HueRoomScreen extends HTMLElement {
     this._lightControlThrottleTimers = { brightness: null, color: null, temp: null };
     this._lightControlLastStep = { brightness: null, color: null, temp: null };
     this._lightControlPending = { brightnessPct: null, hue: null, temp: null };
+    this._autoCameraEntities = null;
+    this._autoCameraLookupStarted = false;
   }
 
   setConfig(config) {
@@ -1409,6 +1411,20 @@ class HueRoomScreen extends HTMLElement {
       blocks.push(this._renderCameraSection(section));
     });
 
+    // Auto camera fallback: if the room config has no camera section, render
+    // any camera entities that match the room (area-scoped async, then rerender).
+    if (cameraSections.length === 0) {
+      const autoEntities = Array.isArray(this._autoCameraEntities) ? this._autoCameraEntities : null;
+      if (autoEntities && autoEntities.length > 0) {
+        autoEntities.forEach((entityId) => {
+          blocks.push(this._renderCameraSection({ type: 'camera', entity: entityId, title: 'CAMERA' }));
+        });
+      } else if (!this._autoCameraLookupStarted) {
+        this._autoCameraLookupStarted = true;
+        void this._loadAutoCamerasForRoom();
+      }
+    }
+
     if (devicesSection) {
       blocks.push(this._renderDevicesSection(devicesSection));
     }
@@ -1426,6 +1442,18 @@ class HueRoomScreen extends HTMLElement {
     }
 
     return blocks.join('');
+  }
+
+  async _loadAutoCamerasForRoom() {
+    try {
+      const options = await this._getRoomAreaScopedEntities(['camera']);
+      this._autoCameraEntities = (options || []).map((o) => o.entity_id).filter((id) => String(id).startsWith('camera.'));
+    } catch {
+      this._autoCameraEntities = [];
+    }
+    if (this._rendered) {
+      this._render();
+    }
   }
 
   _renderScenesSection(scenes) {
@@ -1526,8 +1554,8 @@ class HueRoomScreen extends HTMLElement {
     const streamUrl = this._cameraStreamUrl(entityId, state);
     const snapshotUrl = this._cameraSnapshotUrl(entityId, state);
     const refreshMs = Number.isFinite(Number(section.refresh_ms))
-      ? Math.max(800, Math.min(10000, Number(section.refresh_ms)))
-      : 1500;
+      ? Math.max(2000, Math.min(15000, Number(section.refresh_ms)))
+      : 4500;
 
     return `
       <div class="hue-section">
@@ -1538,12 +1566,12 @@ class HueRoomScreen extends HTMLElement {
           <div class="hue-camera-media">
             <img
               class="hue-camera-feed"
-              src="${escapeHtml(this._withCacheBuster(snapshotUrl))}"
+              src="${escapeHtml(streamUrl)}"
               alt="${escapeHtml(cameraName)}"
               loading="lazy"
               data-live-src="${escapeHtml(streamUrl)}"
               data-snapshot-src="${escapeHtml(snapshotUrl)}"
-              data-mode="snapshot"
+              data-mode="live"
               data-refresh-ms="${refreshMs}"
               data-entity="${escapeHtml(entityId)}"
             />
@@ -1614,6 +1642,14 @@ class HueRoomScreen extends HTMLElement {
       if (brightness) this._lightControlDragging.brightness = true;
       if (color) this._lightControlDragging.color = true;
       if (temp) this._lightControlDragging.temp = true;
+      return;
+    }
+
+    const backButton = e.target.closest('.hue-header-back');
+    if (backButton) {
+      e.preventDefault();
+      e.stopPropagation();
+      this._navigateToPath(backButton.dataset.path, true);
       return;
     }
 
@@ -2931,18 +2967,48 @@ class HueRoomScreen extends HTMLElement {
       if (img.dataset.bound === 'true') return;
       img.dataset.bound = 'true';
 
-      const rawRefreshMs = Number.parseInt(img.dataset.refreshMs || '1500', 10);
+      const rawRefreshMs = Number.parseInt(img.dataset.refreshMs || '4500', 10);
       const refreshMs = Number.isFinite(rawRefreshMs)
-        ? Math.max(800, Math.min(10000, rawRefreshMs))
-        : 1500;
+        ? Math.max(2000, Math.min(15000, rawRefreshMs))
+        : 4500;
 
-      this._refreshCameraSnapshot(img);
-      const intervalId = setInterval(() => this._refreshCameraSnapshot(img), refreshMs);
+      // Prefer live MJPEG stream, fall back to snapshot polling on error.
+      img.addEventListener('error', () => {
+        if (!img.isConnected) return;
+        if (img.dataset.mode === 'live') {
+          this._switchCameraToSnapshot(img);
+        }
+      });
+
+      img.addEventListener('load', () => {
+        if (!img.isConnected) return;
+        img.dataset.lastOk = String(Date.now());
+      });
+
+      this._switchCameraToLive(img);
+
+      // If we're in snapshot mode, poll snapshots. If live mode works, we don't need polling.
+      const intervalId = setInterval(() => {
+        if (!img.isConnected) return;
+        if (img.dataset.mode === 'snapshot') {
+          this._refreshCameraSnapshot(img);
+        }
+      }, refreshMs);
       this._cameraRefreshIntervals.set(img, intervalId);
     });
   }
 
+  _switchCameraToLive(img) {
+    if (!img || !img.isConnected) return;
+    const liveSrc = img.dataset.liveSrc;
+    if (!liveSrc) return;
+    img.dataset.mode = 'live';
+    img.src = liveSrc;
+  }
+
   _switchCameraToSnapshot(img) {
+    if (!img || !img.isConnected) return;
+    img.dataset.mode = 'snapshot';
     this._refreshCameraSnapshot(img, true);
   }
 
@@ -2993,6 +3059,17 @@ class HueRoomScreen extends HTMLElement {
           statusEl.textContent = 'Unavailable';
         } else {
           statusEl.textContent = 'Live';
+        }
+      }
+
+      if (img && available) {
+        // Keep tokens fresh: camera access_token can rotate, so keep URLs updated.
+        img.dataset.liveSrc = this._cameraStreamUrl(entityId, state);
+        img.dataset.snapshotSrc = this._cameraSnapshotUrl(entityId, state);
+
+        // If we're in live mode but the src doesn't match anymore, update it.
+        if (img.dataset.mode === 'live' && img.src !== img.dataset.liveSrc) {
+          img.src = img.dataset.liveSrc;
         }
       }
     });

@@ -1820,9 +1820,12 @@ class HueHomeScreen extends HTMLElement {
     if (!this._roomsIndex) return;
 
     const dashboardPath = (this._roomsIndex.dashboard_path || '/hue-ui').replace(/\/+$/, '');
-    const currentPath = (window.location.pathname || '').replace(/\/+$/, '');
     const personPrefix = `${dashboardPath}/person/`;
-    if (currentPath !== dashboardPath && !currentPath.startsWith(personPrefix)) return;
+    const isRelevantPath = () => {
+      const path = (window.location.pathname || '').replace(/\/+$/, '');
+      return path === dashboardPath || path.startsWith(personPrefix);
+    };
+    if (!isRelevantPath()) return;
 
     if (this._homeReturnRerenderTimer) {
       clearTimeout(this._homeReturnRerenderTimer);
@@ -1831,7 +1834,8 @@ class HueHomeScreen extends HTMLElement {
       this._homeReturnRerenderTimer = null;
       if (!this._hass || !this._roomsIndex) return;
       this._render();
-      if (currentPath === dashboardPath) {
+      const nextPath = (window.location.pathname || '').replace(/\/+$/, '');
+      if (nextPath === dashboardPath) {
         this._resetHeaderToExpanded();
         this._resetWidgetPager();
       }
@@ -1844,6 +1848,11 @@ class HueHomeScreen extends HTMLElement {
     if (!this._scrollEl) {
       this._initScrollHandler();
     }
+
+    // Recollect expanded children after route changes / re-render (prevents
+    // weather/people from getting "stuck" invisible if we hold stale refs).
+    const widgetPagerEl = this.shadowRoot.querySelector('.expanded-header .widget-pager-frame');
+    this._expandedChildren = [widgetPagerEl].filter(Boolean);
 
     if (this._scrollEl) {
       this._scrollEl.scrollTop = 0;
