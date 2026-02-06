@@ -1,0 +1,62 @@
+{
+  "name": "Living Room",
+  "scenes": [
+    {
+      "entity": "scene.living_room_relax",
+      "name": "Relax",
+      "icon": "mdi:sofa",
+      "color": "rgba(255, 205, 116, 0.22)"
+    }
+  ],
+  "sections": [
+    {
+      "type": "lighting",
+      "title": "Lighting",
+      "layout": "list",
+      "mode_default": "brightness",
+      "groups": [],
+      "ungrouped": [
+        "light.living_room_main"
+      ]
+    },
+    {
+      "type": "climate",
+      "title": "Climate",
+      "entities": [
+        "climate.living_room"
+      ]
+    },
+    {
+      "type": "devices",
+      "title": "Devices",
+      "switches": [
+        {
+          "entity": "switch.example",
+          "name": "Example Switch",
+          "icon": "mdi:toggle-switch"
+        }
+      ],
+      "media_players": [],
+      "power_map": {}
+    },
+    {
+      "type": "mediaplayers",
+      "title": "Mediaplayers",
+      "players": [
+        {
+          "entity": "media_player.living_room",
+          "name": "Speaker",
+          "wide": true
+        }
+      ],
+      "tv_players": []
+    }
+  ],
+  "sensors": [
+    {
+      "entity": "sensor.living_room_temperature",
+      "name": "Temperature"
+    }
+  ]
+}
+

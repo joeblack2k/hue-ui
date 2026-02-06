@@ -1,2 +1,9 @@
 .DS_Store
 ._*
+
+# Local Home Assistant instance config (contains personal entity IDs)
+config/rooms.index.json
+config/rooms/
+
+# Optional local screenshots/assets
+image.png

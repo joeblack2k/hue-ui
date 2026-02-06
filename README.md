@@ -1,182 +1,101 @@
-# Hue UI - Philips Hue-style Home Assistant Dashboard
+# Hue UI (Hue-style Home Assistant Dashboard)
 
-A modular Lovelace card suite that reproduces the Philips Hue app look-and-feel for Home Assistant.
+Hue-inspired Home Assistant Lovelace cards with a Philips Hue app-like layout and interaction model.
+
+This repo contains code only. Do not commit personal Home Assistant entity IDs, names, or images. Keep your real config in ignored files.
 
 ## Features
 
-- **Leather-textured dark theme** matching Philips Hue app aesthetics
-- **Home Dashboard** - Overview of all rooms with status indicators
-- **Room Screens** - Detailed control with lighting, climate, and devices
-- **Smooth animations** - Hue-style toggles and expand/collapse
-- **Smart rendering** - Only updates when entity states change
-- **Mobile-friendly** - Responsive grid layouts for phone and tablet
+- Home screen with swipeable people/weather widget, rooms grid, devices grid.
+- Room screens with scenes, paginated lighting, climate, devices, mediaplayers, cameras.
+- In-app editors (persist to browser local storage overrides).
+- Person detail screen (photo, location map, battery bar, phone sensors).
+- Tap the home title to open the native Home Assistant sidebar (escape kiosk mode).
 
-## Installation
+## Install (Fresh Home Assistant)
 
-### Manual Installation
+### 1. Copy Files
 
-1. Copy the `hue-ui` folder to your Home Assistant `www` directory:
-   ```
-   /config/www/hue-ui/
-   ```
+Copy this folder to your Home Assistant `www` directory:
 
-2. Add the resource to your Lovelace configuration:
-   ```yaml
-   resources:
-     - url: /local/hue-ui/src/index.js
-       type: module
-   ```
+- `/config/www/hue-ui/`
 
-3. Restart Home Assistant or clear your browser cache.
+On Home Assistant OS/Supervised you can do this via Samba/SSH add-on.
 
-## Cards
+### 2. Add Lovelace Resource
 
-### hue-home-dashboard
+Settings -> Dashboards -> Resources -> Add resource:
 
-Displays a vertical list of room cards. Clicking a room navigates to its detail view.
+- URL: `/local/hue-ui/src/hue-ui.js?v=12.21`
+- Type: `JavaScript Module`
+
+If you update files later, bump the `v=` query to force a refresh.
+
+### 3. Create Config Files
+
+Create your local config files (these are ignored by git on purpose):
+
+- `/config/www/hue-ui/config/rooms.index.json`
+- `/config/www/hue-ui/config/rooms/<room>.json`
+
+Start from the templates:
+
+- `/config/www/hue-ui/config/examples/rooms.index.example.json`
+- `/config/www/hue-ui/config/examples/rooms/living_room.example.json`
+
+### 4. Create Dashboard Views
+
+Create a new dashboard (or add to an existing one) and add these cards.
+
+Home view:
 
 ```yaml
-type: custom:hue-home-dashboard
-title: Home
-subtitle: Welcome back
-rooms:
-  - name: Living Room
-    icon: 🛋️
-    path: /lovelace-hue/living-room
-    lights:
-      - light.living_room_ceiling
-      - light.living_room_lamp
-    climate: climate.living_room
-    temperature_sensor: sensor.living_room_temperature
-  - name: Kitchen
-    icon: 🍳
-    path: /lovelace-hue/kitchen
-    lights:
-      - light.kitchen_ceiling
+type: custom:hue-home-screen
 ```
 
-#### Configuration
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `title` | string | No | Dashboard title (default: "Home") |
-| `subtitle` | string | No | Subtitle text |
-| `rooms` | list | Yes | List of room configurations |
-
-**Room options:**
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | string | Yes | Room name |
-| `icon` | string | No | Room icon (emoji or mdi:icon) |
-| `path` | string | No | Navigation path when clicked |
-| `lights` | list | No | Light entity IDs |
-| `climate` | string | No | Climate entity ID |
-| `temperature_sensor` | string | No | Temperature sensor entity ID |
-
-### hue-room-screen
-
-Detailed room view with sections for lighting, climate, and devices.
+Room view (one per room id):
 
 ```yaml
 type: custom:hue-room-screen
-name: Living Room
-icon: 🛋️
-back_path: /lovelace-hue/home
-
-temperature_sensor: sensor.living_room_temperature
-humidity_sensor: sensor.living_room_humidity
-motion_sensor: binary_sensor.living_room_motion
-
-lights:
-  - light.living_room_ceiling
-  - light.living_room_lamp
-lights_layout: list
-
-climate: climate.living_room
-
-devices:
-  - entity: media_player.tv
-    name: TV
-    icon: mdi:television
-    power_sensor: sensor.tv_power
-  - entity: switch.fan
-    name: Fan
-    icon: mdi:fan
+room: living_room
 ```
 
-#### Configuration
+Navigation uses the `dashboard_path` set in `rooms.index.json` (default `/hue-ui`).
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | string | Yes | Room name |
-| `icon` | string | No | Room icon |
-| `back_path` | string | No | Navigation path for back button |
-| `temperature_sensor` | string | No | Temperature sensor for header |
-| `humidity_sensor` | string | No | Humidity sensor for header |
-| `motion_sensor` | string | No | Motion sensor for header |
-| `lights` | list | No | Light entity IDs |
-| `lights_layout` | string | No | "list" or "grid" |
-| `climate` | string/list | No | Climate entity ID(s) |
-| `devices` | list | No | Device configurations |
+## Configuration Model
 
-**Device options:**
+The UI is config-driven via JSON under `config/` in `/config/www/hue-ui/`.
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `entity` | string | Yes | Entity ID |
-| `name` | string | No | Display name |
-| `icon` | string | No | Override icon |
-| `power_sensor` | string | No | Power sensor entity ID |
+- Global index: `config/rooms.index.json`
+- Rooms: `config/rooms/<room>.json`
 
-## Setting Up Navigation
+Important fields in `rooms.index.json`:
 
-For room navigation to work, create views in your Lovelace configuration:
+- `home_name`: the title shown on the Home screen (example: `Huisje Weltevree`)
+- `dashboard_path`: base path used for internal navigation (example: `/hue-ui`)
+- `rooms[]`: your rooms list, their `lights[]`, and `sensors` (temp/motion/shower)
+- `devices[]`: extra tiles (example: printer progress)
+- `people[]`: `person.*` entities to show
+- `people_area_sensors`: optional mapping for “room-level presence” display
 
-```yaml
-views:
-  - title: Home
-    path: home
-    panel: true
-    cards:
-      - type: custom:hue-home-dashboard
-        # ... config
+## Editors and Overrides (LocalStorage)
 
-  - title: Living Room
-    path: living-room
-    panel: true
-    cards:
-      - type: custom:hue-room-screen
-        name: Living Room
-        back_path: /lovelace-hue/home
-        # ... config
-```
+Some edits (widget renames/hide/remove/add, home room sensor picks, etc.) are stored as browser localStorage overrides so you can iterate quickly without editing JSON on disk.
 
-## Design Tokens
+To reset overrides, clear the site data for your Home Assistant URL or remove localStorage keys starting with:
 
-The cards use CSS variables for consistent theming:
+- `hue-ui-room-config-override:`
+- `hue-ui-rooms-index-override`
 
-- `--hue-bg-gradient`: Background gradient
-- `--hue-surface`: Card/row background
-- `--hue-gold`: Primary accent color
-- `--hue-text-primary`: Primary text color
-- `--hue-text-muted`: Muted text color
+## Updating This Repo (Workflow)
 
-## Browser Compatibility
+This repo should stay safe to share publicly.
 
-- Chrome 80+
-- Firefox 75+
-- Safari 13.1+
-- Edge 80+
+- Never commit real entity IDs that include personal names, addresses, or device identifiers.
+- Keep real configs in `config/rooms.index.json` and `config/rooms/` (ignored by `.gitignore`).
+- Commit with a clear message that states what changed and why.
+- Update `CHANGELOG.md` for user-visible changes.
 
-## Tips
+## Changelog
 
-1. **Kiosk Mode**: Use [kiosk-mode](https://github.com/maykar/kiosk-mode) to hide the HA header/sidebar for a true app-like experience.
-
-2. **Full Screen**: Create a dedicated dashboard at `/lovelace-hue/` with `panel: true` views.
-
-3. **Mobile**: The responsive grid shows 2 columns on phones, 3 on tablets.
-
-## License
-
-MIT License
+See `CHANGELOG.md`.
