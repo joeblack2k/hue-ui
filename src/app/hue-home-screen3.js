@@ -866,6 +866,12 @@ const STYLES = `
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
   }
 
+  .room-shower-label {
+    color: rgba(118, 185, 255, 0.95);
+    text-shadow: 0 0 10px rgba(118, 185, 255, 0.35);
+    letter-spacing: 0.2px;
+  }
+
   .room-temp-dot {
     width: 9px;
     height: 9px;
@@ -2159,6 +2165,15 @@ class HueHomeScreen extends HTMLElement {
     const ledColor = getTemperatureLEDColor(tempValue);
     const tempText = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
 
+    const tempLineMarkup = isShowering
+      ? `<div class="room-temp-line"><span class="room-shower-label">Douchen</span></div>`
+      : `
+          <div class="room-temp-line">
+            <span class="room-temp-dot ${ledColor}" data-sensor="${escapeHtml(tempSensor || '')}"></span>
+            <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">${escapeHtml(tempText)}</span>
+          </div>
+        `;
+
     return `
       <div class="room-tile ${hasLightsOn ? 'lights-on' : ''} ${isShowering ? 'is-showering' : ''}" data-room="${escapeHtml(room.id)}">
         <div class="room-header">
@@ -2173,10 +2188,7 @@ class HueHomeScreen extends HTMLElement {
         </div>
         <div class="room-name">${escapeHtml(room.name)}</div>
         <div class="room-meta">
-          <div class="room-temp-line">
-            <span class="room-temp-dot ${ledColor}" data-sensor="${escapeHtml(tempSensor || '')}"></span>
-            <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">${escapeHtml(tempText)}</span>
-          </div>
+          ${tempLineMarkup}
           <div class="room-status">${lightsOn} / ${lights.length} aan</div>
         </div>
         <div class="room-indicators-bottom">
@@ -2534,15 +2546,17 @@ class HueHomeScreen extends HTMLElement {
     const status = this.shadowRoot.querySelector('.home-room-editor-status');
     if (!overlay || !tempSelect || !motionSelect) return;
 
-    const tempOptions = this._collectRoomSensorOptions(room, 'temp');
-    const motionOptions = this._collectRoomSensorOptions(room, 'motion');
-    tempSelect.innerHTML = this._renderHomeRoomSensorOptions(tempOptions, this._homeRoomEditor.temperature);
-    motionSelect.innerHTML = this._renderHomeRoomSensorOptions(motionOptions, this._homeRoomEditor.motion);
+    // Async fill from HA registry (room-scoped). Put a placeholder immediately so
+    // the UI never renders an empty/broken select.
+    tempSelect.innerHTML = '<option value="">Loading...</option>';
+    motionSelect.innerHTML = '<option value="">Loading...</option>';
     tempSelect.style.display = 'none';
     motionSelect.style.display = 'none';
     if (title) title.textContent = `Edit room widget · ${room.name || room.id}`;
     if (status) status.textContent = '';
     overlay.classList.add('is-open');
+
+    void this._populateHomeRoomEditorSelects(room);
   }
 
   _closeHomeRoomEditor({ discardChanges = false } = {}) {
@@ -2559,27 +2573,116 @@ class HueHomeScreen extends HTMLElement {
     this._homeRoomSnapshot = null;
   }
 
-  _collectRoomSensorOptions(room, kind) {
-    const list = [];
-    const add = (entityId) => {
-      if (!entityId || typeof entityId !== 'string') return;
-      if (list.some((item) => item.entity_id === entityId)) return;
-      const state = this._hass?.states?.[entityId];
-      const name = state?.attributes?.friendly_name || entityId;
-      list.push({ entity_id: entityId, name });
-    };
+  async _populateHomeRoomEditorSelects(room) {
+    if (!this._hass?.callWS) return;
+    const editor = this._homeRoomEditor;
+    if (!editor || editor.roomId !== room?.id) return;
 
-    const sensorsObj = room?.sensors && typeof room.sensors === 'object' ? room.sensors : {};
-    Object.values(sensorsObj).forEach((entityId) => {
-      const domain = String(entityId || '').split('.')[0];
-      if (kind === 'temp' && domain === 'sensor') add(entityId);
-      if (kind === 'motion' && domain === 'binary_sensor') add(entityId);
+    const tempSelect = this.shadowRoot.querySelector('[data-room-editor-select="temp"]');
+    const motionSelect = this.shadowRoot.querySelector('[data-room-editor-select="motion"]');
+    if (!tempSelect || !motionSelect) return;
+
+    const normalize = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    try {
+      if (!Array.isArray(this._areaRegistry)) {
+        this._areaRegistry = await this._hass.callWS({ type: 'config/area_registry/list' });
+      }
+      if (!Array.isArray(this._entityRegistry)) {
+        this._entityRegistry = await this._hass.callWS({ type: 'config/entity_registry/list' });
+      }
+      if (!Array.isArray(this._deviceRegistry)) {
+        this._deviceRegistry = await this._hass.callWS({ type: 'config/device_registry/list' });
+      }
+    } catch (error) {
+      console.warn('[HueHomeScreen] Failed to load registry lists for editor dropdowns:', error);
+      return;
+    }
+
+    // Editor could have been closed while we were awaiting.
+    if (!this._homeRoomEditor || this._homeRoomEditor.roomId !== room?.id) return;
+
+    const roomNameNorm = normalize(room?.name || room?.id);
+    const roomIdNorm = normalize(room?.id || '');
+    const areaIdFromConfig = room?.area_id || null;
+    let roomAreaId = areaIdFromConfig;
+
+    if (!roomAreaId) {
+      const areaMatch = this._areaRegistry.find((area) => {
+        const areaId = area?.area_id || area?.id || '';
+        const areaName = normalize(area?.name || areaId);
+        return areaName === roomNameNorm || areaName === roomIdNorm;
+      });
+      roomAreaId = areaMatch?.area_id || areaMatch?.id || null;
+    }
+
+    const deviceAreaMap = new Map();
+    this._deviceRegistry.forEach((device) => {
+      const deviceId = device?.id;
+      const areaId = device?.area_id || null;
+      if (deviceId) deviceAreaMap.set(deviceId, areaId);
     });
 
-    if (kind === 'temp') add(room?.sensors?.temperature);
-    if (kind === 'motion') add(room?.sensors?.motion);
+    const entryMatchesRoom = (entry) => {
+      if (!entry?.entity_id) return false;
 
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+      if (roomAreaId) {
+        if (entry?.area_id === roomAreaId) return true;
+        const byDevice = entry?.device_id ? deviceAreaMap.get(entry.device_id) : null;
+        return byDevice === roomAreaId;
+      }
+
+      // Heuristic fallback if the room has no area in HA.
+      const entityIdNorm = normalize(entry?.entity_id || '');
+      const nameNorm = normalize(entry?.name || entry?.original_name || '');
+      const state = this._hass?.states?.[entry?.entity_id];
+      const friendlyNorm = normalize(state?.attributes?.friendly_name || '');
+      return entityIdNorm.includes(roomIdNorm) || nameNorm.includes(roomNameNorm) || friendlyNorm.includes(roomNameNorm);
+    };
+
+    const candidates = this._entityRegistry.filter((entry) => {
+      if (!entryMatchesRoom(entry)) return false;
+      if (entry?.disabled_by) return false;
+      return true;
+    });
+
+    const toOption = (entityId) => {
+      const state = this._hass?.states?.[entityId];
+      const name = state?.attributes?.friendly_name || entityId;
+      return { entity_id: entityId, name };
+    };
+
+    const tempOptions = candidates
+      .filter((entry) => String(entry.entity_id).startsWith('sensor.'))
+      .map((entry) => entry.entity_id)
+      .filter((entityId) => !!this._hass?.states?.[entityId])
+      .filter((entityId) => {
+        const st = this._hass.states[entityId];
+        const dc = String(st?.attributes?.device_class || '').toLowerCase();
+        const unit = String(st?.attributes?.unit_of_measurement || '').toLowerCase();
+        return dc === 'temperature' || unit.includes('°c') || unit.includes('c');
+      })
+      .map(toOption)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const motionCandidates = candidates
+      .filter((entry) => String(entry.entity_id).startsWith('binary_sensor.'))
+      .map((entry) => entry.entity_id)
+      .filter((entityId) => !!this._hass?.states?.[entityId]);
+
+    const motionPreferred = motionCandidates.filter((entityId) => {
+      const st = this._hass.states[entityId];
+      const dc = String(st?.attributes?.device_class || '').toLowerCase();
+      const name = String(st?.attributes?.friendly_name || '').toLowerCase();
+      return dc === 'motion' || dc === 'occupancy' || name.includes('motion') || name.includes('beweging');
+    });
+
+    const motionOptions = (motionPreferred.length ? motionPreferred : motionCandidates)
+      .map(toOption)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    tempSelect.innerHTML = this._renderHomeRoomSensorOptions(tempOptions, this._homeRoomEditor.temperature);
+    motionSelect.innerHTML = this._renderHomeRoomSensorOptions(motionOptions, this._homeRoomEditor.motion);
   }
 
   _renderHomeRoomSensorOptions(options, selected) {
@@ -2650,7 +2753,57 @@ class HueHomeScreen extends HTMLElement {
     hapticFeedback();
     const ha = document.querySelector('home-assistant');
     if (!ha) return;
-    ha.dispatchEvent(new Event('hass-toggle-menu', { bubbles: true, composed: true }));
+
+    const dispatch = (target) => {
+      try {
+        if (!target?.dispatchEvent) return false;
+        const ev = new Event('hass-toggle-menu', { bubbles: true, composed: true });
+        target.dispatchEvent(ev);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    // Common HA event targets.
+    dispatch(ha);
+    dispatch(ha.shadowRoot?.querySelector('home-assistant-main'));
+    dispatch(document);
+    dispatch(window);
+
+    // Kiosk/companion sometimes blocks the event; click the hamburger/menu button directly.
+    const findNodeDeep = (root, matcher) => {
+      if (!root) return null;
+      const queue = [root];
+      while (queue.length) {
+        const node = queue.shift();
+        try {
+          if (matcher(node)) return node;
+        } catch {
+          // ignore matcher errors
+        }
+        if (node?.shadowRoot) queue.push(node.shadowRoot);
+        const children = node?.children || node?.childNodes || [];
+        for (const child of children) queue.push(child);
+      }
+      return null;
+    };
+
+    const menuButton = findNodeDeep(ha, (node) => {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+      if (typeof node.matches !== 'function') return false;
+      return (
+        node.matches('ha-icon-button[icon="mdi:menu"]')
+        || node.matches('ha-icon-button[icon="mdi:menu-open"]')
+        || node.matches('ha-icon-button[aria-label="Menu"]')
+        || node.matches('ha-icon-button[aria-label="menu"]')
+        || node.matches('[data-menu-button]')
+      );
+    });
+
+    if (menuButton && typeof menuButton.click === 'function') {
+      menuButton.click();
+    }
   }
 
   // ===== State Updates =====
@@ -2678,35 +2831,56 @@ class HueHomeScreen extends HTMLElement {
     });
 
     // Update room tiles
-    this.shadowRoot.querySelectorAll('.room-tile').forEach(tile => {
-      const roomId = tile.dataset.room;
-      const room = this._roomsIndex.rooms?.find(r => r.id === roomId);
-      if (!room) return;
+	    this.shadowRoot.querySelectorAll('.room-tile').forEach(tile => {
+	      const roomId = tile.dataset.room;
+	      const room = this._roomsIndex.rooms?.find(r => r.id === roomId);
+	      if (!room) return;
 
-      const lights = room.lights || [];
-      const lightsOn = lights.filter(id => this._hass?.states[id]?.state === 'on').length;
-      const statusEl = tile.querySelector('.room-status');
-      const toggleTrack = tile.querySelector('.toggle-track');
-      const toggleThumb = tile.querySelector('.toggle-thumb');
-      const tempSensor = room.sensors?.temperature;
-      const tempValue = tempSensor ? parseFloat(this._hass?.states[tempSensor]?.state) : null;
-      const tempLine = tile.querySelector('.room-temp-line');
-      const tempValueEl = tile.querySelector('.room-temp-value');
-      const tempDot = tile.querySelector('.room-temp-dot');
+	      const showerSensor = room.sensors?.shower;
+	      const isShoweringNow = showerSensor ? this._isEntityActive(showerSensor) : false;
+
+	      const lights = room.lights || [];
+	      const lightsOn = lights.filter(id => this._hass?.states[id]?.state === 'on').length;
+	      const statusEl = tile.querySelector('.room-status');
+	      const toggleTrack = tile.querySelector('.toggle-track');
+	      const toggleThumb = tile.querySelector('.toggle-thumb');
+	      const tempSensor = room.sensors?.temperature;
+	      const tempValue = tempSensor ? parseFloat(this._hass?.states[tempSensor]?.state) : null;
+	      const tempLine = tile.querySelector('.room-temp-line');
+	      let tempValueEl = tile.querySelector('.room-temp-value');
+	      let tempDot = tile.querySelector('.room-temp-dot');
 
       if (statusEl) {
         statusEl.textContent = `${lightsOn} / ${lights.length} aan`;
       }
-      if (tempValueEl) {
-        tempValueEl.textContent = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
-      }
-      if (tempLine) {
-        tempLine.style.display = tempSensor ? '' : 'none';
-      }
-      if (tempDot) {
-        tempDot.classList.remove('red', 'orange', 'blue', 'unknown');
-        tempDot.classList.add(getTemperatureLEDColor(tempValue));
-      }
+	      if (tempLine) {
+	        // Showering replaces temp line content with "Douchen".
+	        if (isShoweringNow) {
+	          if (!tempLine.querySelector('.room-shower-label')) {
+	            tempLine.innerHTML = '<span class="room-shower-label">Douchen</span>';
+	          }
+	        } else {
+	          if (!tempLine.querySelector('.room-temp-value') || !tempLine.querySelector('.room-temp-dot')) {
+	            tempLine.innerHTML = `
+	              <span class="room-temp-dot unknown" data-sensor="${escapeHtml(tempSensor || '')}"></span>
+	              <span class="room-temp-value" data-sensor="${escapeHtml(tempSensor || '')}">--</span>
+	            `;
+	            tempValueEl = tempLine.querySelector('.room-temp-value');
+	            tempDot = tempLine.querySelector('.room-temp-dot');
+	          }
+	        }
+
+	        // Keep visible during shower even without a temp sensor.
+	        tempLine.style.display = (isShoweringNow || tempSensor) ? '' : 'none';
+	      }
+
+	      if (!isShoweringNow && tempValueEl) {
+	        tempValueEl.textContent = Number.isFinite(tempValue) ? `${tempValue.toFixed(1)}°C` : '--';
+	      }
+	      if (!isShoweringNow && tempDot) {
+	        tempDot.classList.remove('red', 'orange', 'blue', 'unknown');
+	        tempDot.classList.add(getTemperatureLEDColor(tempValue));
+	      }
 
       if (lightsOn > 0) {
         tile.classList.add('lights-on');
@@ -2718,13 +2892,12 @@ class HueHomeScreen extends HTMLElement {
         toggleThumb?.classList.remove('on');
       }
 
-      const showerSensor = room.sensors?.shower;
-      if (showerSensor) {
-        tile.classList.toggle('is-showering', this._isEntityActive(showerSensor));
-      } else {
-        tile.classList.remove('is-showering');
-      }
-    });
+	      if (showerSensor) {
+	        tile.classList.toggle('is-showering', isShoweringNow);
+	      } else {
+	        tile.classList.remove('is-showering');
+	      }
+	    });
 
     // Update motion indicators
     this.shadowRoot.querySelectorAll('.motion-indicator').forEach(indicator => {

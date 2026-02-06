@@ -26,7 +26,7 @@ On Home Assistant OS/Supervised you can do this via Samba/SSH add-on.
 
 Settings -> Dashboards -> Resources -> Add resource:
 
-- URL: `/local/hue-ui/src/hue-ui.js?v=12.21`
+- URL: `/local/hue-ui/src/hue-ui.js?v=12.22`
 - Type: `JavaScript Module`
 
 If you update files later, bump the `v=` query to force a refresh.
@@ -105,3 +105,4 @@ See `CHANGELOG.md`.
 - Fresh-install setup guide and safe example configs.
 - Hue-style Home + Room screens with in-UI editors and pagination.
 - Person detail screen (map + battery + sensors) and sidebar escape via tapping the home title.
+- More reliable sidebar escape + less jumpy light-control sliders (room popup).

@@ -959,9 +959,9 @@ const STYLES = `
   }
 
   .light-control-modal {
-    width: min(390px, calc(100vw - 34px));
+    width: min(440px, calc(100vw - 24px));
     border-radius: 20px;
-    padding: 18px 16px 16px;
+    padding: 20px 18px 18px;
     box-sizing: border-box;
     background: linear-gradient(180deg, rgba(45, 35, 24, 0.96), rgba(18, 14, 11, 0.96));
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -969,6 +969,8 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 12px;
+    max-height: calc(100vh - 46px);
+    overflow: auto;
   }
 
   .light-control-head {
@@ -1006,6 +1008,60 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .light-control-power-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.22);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .light-control-power-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--hue-text-secondary);
+    text-transform: uppercase;
+  }
+
+  .light-control-power-toggle {
+    width: 50px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.38);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    position: relative;
+    flex: 0 0 auto;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+
+  .light-control-power-toggle[data-on="true"] {
+    background: linear-gradient(180deg, rgba(255, 193, 120, 0.85), rgba(214, 117, 54, 0.86));
+    border-color: rgba(255, 205, 116, 0.7);
+    box-shadow: 0 0 16px rgba(255, 170, 80, 0.22);
+  }
+
+  .light-control-power-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 7px rgba(0, 0, 0, 0.4);
+    transition: transform 0.22s ease;
+  }
+
+  .light-control-power-toggle[data-on="true"] .light-control-power-thumb {
+    transform: translateX(22px);
   }
 
   .light-control-label {
@@ -1049,28 +1105,8 @@ const STYLES = `
     opacity: 0.45;
   }
 
-  .light-control-toggles {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .light-control-toggle {
-    height: 34px;
-    border-radius: 11px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--hue-text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .light-control-toggle.is-on {
-    border-color: rgba(255, 205, 116, 0.85);
-    background: linear-gradient(180deg, rgba(255, 187, 105, 0.85), rgba(214, 117, 54, 0.86));
-    color: #2a160b;
-    box-shadow: 0 0 14px rgba(255, 170, 80, 0.28);
+  .light-control-group.is-hidden {
+    display: none;
   }
 
   /* ===== CAMERA ===== */
@@ -1172,8 +1208,12 @@ class HueRoomScreen extends HTMLElement {
     this._roomFile = null;
     this._editorIsScene = false;
     this._lightControlEntity = null;
-    this._lightControlUseColor = false;
-    this._lightControlUseTemp = false;
+    this._lightControlSupportsColor = false;
+    this._lightControlSupportsTemp = false;
+    this._lightControlDragging = { brightness: false, color: false, temp: false };
+    this._lightControlThrottleTimers = { brightness: null, color: null, temp: null };
+    this._lightControlLastStep = { brightness: null, color: null, temp: null };
+    this._lightControlPending = { brightnessPct: null, hue: null, temp: null };
   }
 
   setConfig(config) {
@@ -1313,16 +1353,17 @@ class HueRoomScreen extends HTMLElement {
                 <div class="light-control-label">Brightness</div>
                 <input class="light-control-slider light-control-brightness" type="range" min="1" max="100" step="1" />
               </div>
-              <div class="light-control-toggles">
-                <button class="light-control-toggle light-control-power" data-light-action="toggle-power">Power</button>
-                <button class="light-control-toggle light-control-color-toggle" data-light-action="toggle-color">Color</button>
-                <button class="light-control-toggle light-control-temp-toggle" data-light-action="toggle-temp">Warmth</button>
+              <div class="light-control-power-row">
+                <div class="light-control-power-label">Power</div>
+                <div class="light-control-power-toggle" data-light-action="toggle-power" data-on="false" role="switch" aria-checked="false">
+                  <div class="light-control-power-thumb"></div>
+                </div>
               </div>
-              <div class="light-control-group">
+              <div class="light-control-group light-control-group-color">
                 <div class="light-control-label">Color</div>
                 <input class="light-control-slider light-control-color" type="range" min="0" max="360" step="1" />
               </div>
-              <div class="light-control-group">
+              <div class="light-control-group light-control-group-temp">
                 <div class="light-control-label">Warmth</div>
                 <input class="light-control-slider light-control-temp" type="range" min="153" max="500" step="1" />
               </div>
@@ -1564,7 +1605,17 @@ class HueRoomScreen extends HTMLElement {
     const overlay = this.shadowRoot.querySelector('.widget-editor-overlay');
     if (overlay?.classList.contains('is-open')) return;
     const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
-    if (lightOverlay?.classList.contains('is-open')) return;
+    if (lightOverlay?.classList.contains('is-open')) {
+      // While the light control is open, we still want pointer events for sliders,
+      // but we must never start the long-press widget editor timer.
+      const brightness = e.target.closest('.light-control-brightness');
+      const color = e.target.closest('.light-control-color');
+      const temp = e.target.closest('.light-control-temp');
+      if (brightness) this._lightControlDragging.brightness = true;
+      if (color) this._lightControlDragging.color = true;
+      if (temp) this._lightControlDragging.temp = true;
+      return;
+    }
 
     const isInteractive = e.target.closest(
       '.hue-header-back, .hue-toggle, .hue-media-primary, .hue-media-volume, .hue-media-source, .hue-climate-setpoint, .light-control-modal, button, input, select'
@@ -1600,6 +1651,26 @@ class HueRoomScreen extends HTMLElement {
 
   _handlePointerUp(e) {
     this._clearLongPressTimer();
+
+    const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
+    if (lightOverlay?.classList.contains('is-open')) {
+      const brightness = e.target.closest('.light-control-brightness');
+      const color = e.target.closest('.light-control-color');
+      const temp = e.target.closest('.light-control-temp');
+      if (brightness) {
+        this._lightControlDragging.brightness = false;
+        this._flushLightControlTimer('brightness');
+      }
+      if (color) {
+        this._lightControlDragging.color = false;
+        this._flushLightControlTimer('color');
+      }
+      if (temp) {
+        this._lightControlDragging.temp = false;
+        this._flushLightControlTimer('temp');
+      }
+    }
+
     const backButton = e.target.closest('.hue-header-back');
     if (!backButton) return;
 
@@ -1728,37 +1799,57 @@ class HueRoomScreen extends HTMLElement {
       const entity = this._lightControlEntity;
       if (!entity) return;
       const percent = Math.max(1, Math.min(100, Number.parseInt(lightBrightness.value, 10) || 1));
-      const brightness = Math.round((percent / 100) * 255);
-      handleAction(this._hass, 'set_brightness', entity, { brightness });
+      this._lightControlPending.brightnessPct = percent;
+
+      // Hard haptic on 2% steps to avoid noisy vibration spam.
+      const stepped = Math.max(0, Math.min(100, Math.round(percent / 2) * 2));
+      if (this._lightControlLastStep.brightness !== stepped) {
+        this._lightControlLastStep.brightness = stepped;
+        hapticFeedback('hard');
+      }
+
+      this._queueLightControlTimer('brightness');
       return;
     }
 
     const lightColor = e.target.closest('.light-control-color');
     if (lightColor) {
       e.stopPropagation();
-      if (!this._lightControlUseColor) return;
+      if (!this._lightControlSupportsColor) return;
       const entity = this._lightControlEntity;
       if (!entity) return;
       const hue = Math.max(0, Math.min(360, Number.parseInt(lightColor.value, 10) || 0));
-      const state = this._hass?.states?.[entity];
-      const sat = Number.isFinite(Number(state?.attributes?.hs_color?.[1]))
-        ? Number(state.attributes.hs_color[1])
-        : 100;
-      handleAction(this._hass, 'set_color_hue', entity, { hs_color: [hue, sat] });
+      this._lightControlPending.hue = hue;
       this._setColorSliderGlow(hue);
+
+      const stepped = Math.max(0, Math.min(360, Math.round(hue / 10) * 10));
+      if (this._lightControlLastStep.color !== stepped) {
+        this._lightControlLastStep.color = stepped;
+        hapticFeedback('hard');
+      }
+
+      this._queueLightControlTimer('color');
       return;
     }
 
     const lightTemp = e.target.closest('.light-control-temp');
     if (lightTemp) {
       e.stopPropagation();
-      if (!this._lightControlUseTemp) return;
+      if (!this._lightControlSupportsTemp) return;
       const entity = this._lightControlEntity;
       if (!entity) return;
       const temp = Number.parseInt(lightTemp.value, 10);
       if (!Number.isFinite(temp)) return;
-      handleAction(this._hass, 'set_color_temp', entity, { color_temp: temp });
+      this._lightControlPending.temp = temp;
       this._setTempSliderGlow(temp, Number(lightTemp.min), Number(lightTemp.max));
+
+      const stepped = Math.round(temp / 10) * 10;
+      if (this._lightControlLastStep.temp !== stepped) {
+        this._lightControlLastStep.temp = stepped;
+        hapticFeedback('hard');
+      }
+
+      this._queueLightControlTimer('temp');
       return;
     }
 
@@ -1880,8 +1971,19 @@ class HueRoomScreen extends HTMLElement {
 
     const state = this._hass.states[entityId];
     const colorMode = String(state?.attributes?.color_mode || '').toLowerCase();
-    this._lightControlUseColor = colorMode === 'hs' || colorMode === 'xy' || !!state?.attributes?.hs_color;
-    this._lightControlUseTemp = colorMode === 'color_temp' || Number.isFinite(Number(state?.attributes?.color_temp));
+    const supported = Array.isArray(state?.attributes?.supported_color_modes)
+      ? state.attributes.supported_color_modes.map((v) => String(v || '').toLowerCase())
+      : [];
+    this._lightControlSupportsColor = supported.some((m) => ['hs', 'xy', 'rgb', 'rgbw', 'rgbww'].includes(m))
+      || colorMode === 'hs'
+      || colorMode === 'xy'
+      || !!state?.attributes?.hs_color;
+    this._lightControlSupportsTemp = supported.includes('color_temp')
+      || colorMode === 'color_temp'
+      || Number.isFinite(Number(state?.attributes?.color_temp))
+      || Number.isFinite(Number(state?.attributes?.min_mireds))
+      || Number.isFinite(Number(state?.attributes?.max_mireds));
+    this._lightControlDragging = { brightness: false, color: false, temp: false };
 
     const overlay = this.shadowRoot.querySelector('.light-control-overlay');
     if (!overlay) return;
@@ -1893,8 +1995,14 @@ class HueRoomScreen extends HTMLElement {
     const overlay = this.shadowRoot.querySelector('.light-control-overlay');
     if (overlay) overlay.classList.remove('is-open');
     this._lightControlEntity = null;
-    this._lightControlUseColor = false;
-    this._lightControlUseTemp = false;
+    this._lightControlSupportsColor = false;
+    this._lightControlSupportsTemp = false;
+    this._lightControlDragging = { brightness: false, color: false, temp: false };
+    Object.keys(this._lightControlThrottleTimers || {}).forEach((key) => {
+      const timer = this._lightControlThrottleTimers[key];
+      if (timer) clearTimeout(timer);
+      this._lightControlThrottleTimers[key] = null;
+    });
   }
 
   _handleLightControlAction(action) {
@@ -1912,83 +2020,140 @@ class HueRoomScreen extends HTMLElement {
       this._refreshLightControlUi();
       return;
     }
+  }
 
-    if (action === 'toggle-color') {
-      this._lightControlUseColor = !this._lightControlUseColor;
-      this._refreshLightControlUi();
+  _queueLightControlTimer(kind) {
+    const key = String(kind || '').toLowerCase();
+    if (!this._lightControlThrottleTimers) {
+      this._lightControlThrottleTimers = { brightness: null, color: null, temp: null };
+    }
+    const existing = this._lightControlThrottleTimers[key];
+    if (existing) clearTimeout(existing);
+    this._lightControlThrottleTimers[key] = setTimeout(() => {
+      this._lightControlThrottleTimers[key] = null;
+      this._sendLightControlPending(key);
+    }, 120);
+  }
+
+  _flushLightControlTimer(kind) {
+    const key = String(kind || '').toLowerCase();
+    const timer = this._lightControlThrottleTimers?.[key];
+    if (timer) {
+      clearTimeout(timer);
+      this._lightControlThrottleTimers[key] = null;
+    }
+    this._sendLightControlPending(key);
+  }
+
+  _sendLightControlPending(kind) {
+    const entity = this._lightControlEntity;
+    if (!entity) return;
+    const pending = this._lightControlPending || {};
+
+    if (kind === 'brightness') {
+      const pct = Number(pending.brightnessPct);
+      if (!Number.isFinite(pct)) return;
+      const percent = Math.max(1, Math.min(100, Math.round(pct)));
+      const brightness = Math.round((percent / 100) * 255);
+      handleAction(this._hass, 'set_brightness', entity, { brightness });
       return;
     }
 
-    if (action === 'toggle-temp') {
-      this._lightControlUseTemp = !this._lightControlUseTemp;
-      this._refreshLightControlUi();
+    if (kind === 'color') {
+      if (!this._lightControlSupportsColor) return;
+      const hue = Number(pending.hue);
+      if (!Number.isFinite(hue)) return;
+      const safeHue = Math.max(0, Math.min(360, Math.round(hue)));
+      const state = this._hass?.states?.[entity];
+      const sat = Number.isFinite(Number(state?.attributes?.hs_color?.[1]))
+        ? Number(state.attributes.hs_color[1])
+        : 100;
+      handleAction(this._hass, 'set_color_hue', entity, { hs_color: [safeHue, sat] });
+      return;
+    }
+
+    if (kind === 'temp') {
+      if (!this._lightControlSupportsTemp) return;
+      const temp = Number(pending.temp);
+      if (!Number.isFinite(temp)) return;
+      handleAction(this._hass, 'set_color_temp', entity, { color_temp: Math.round(temp) });
     }
   }
 
-  _refreshLightControlUi() {
-    const overlay = this.shadowRoot.querySelector('.light-control-overlay');
-    if (!overlay?.classList.contains('is-open')) return;
-    const entity = this._lightControlEntity;
-    if (!entity) return;
-    const state = this._hass?.states?.[entity];
-    if (!state) return;
+	  _refreshLightControlUi() {
+	    const overlay = this.shadowRoot.querySelector('.light-control-overlay');
+	    if (!overlay?.classList.contains('is-open')) return;
+	    const entity = this._lightControlEntity;
+	    if (!entity) return;
+	    const state = this._hass?.states?.[entity];
+	    if (!state) return;
 
-    const titleEl = this.shadowRoot.querySelector('.light-control-title');
-    const brightnessEl = this.shadowRoot.querySelector('.light-control-brightness');
-    const powerBtn = this.shadowRoot.querySelector('.light-control-power');
-    const colorBtn = this.shadowRoot.querySelector('.light-control-color-toggle');
-    const tempBtn = this.shadowRoot.querySelector('.light-control-temp-toggle');
-    const colorEl = this.shadowRoot.querySelector('.light-control-color');
-    const tempEl = this.shadowRoot.querySelector('.light-control-temp');
+	    const titleEl = this.shadowRoot.querySelector('.light-control-title');
+	    const brightnessEl = this.shadowRoot.querySelector('.light-control-brightness');
+	    const powerToggle = this.shadowRoot.querySelector('.light-control-power-toggle');
+	    const colorGroup = this.shadowRoot.querySelector('.light-control-group-color');
+	    const tempGroup = this.shadowRoot.querySelector('.light-control-group-temp');
+	    const colorEl = this.shadowRoot.querySelector('.light-control-color');
+	    const tempEl = this.shadowRoot.querySelector('.light-control-temp');
 
-    const name = state.attributes?.friendly_name || entity.split('.')[1];
-    if (titleEl) titleEl.textContent = name;
+	    const name = state.attributes?.friendly_name || entity.split('.')[1];
+	    if (titleEl) titleEl.textContent = name;
 
-    const rawBrightness = Number(state.attributes?.brightness);
-    const brightnessPct = Number.isFinite(rawBrightness)
-      ? Math.max(1, Math.min(100, Math.round((rawBrightness / 255) * 100)))
-      : 100;
-    if (brightnessEl) {
-      brightnessEl.value = String(brightnessPct);
-      brightnessEl.style.setProperty('--track', 'linear-gradient(90deg, #5bb4ff 0%, #ffd56f 55%, #ff8a56 100%)');
-      brightnessEl.style.setProperty('--glow', 'rgba(255, 190, 102, 0.48)');
-    }
+	    const rawBrightness = Number(state.attributes?.brightness);
+	    const brightnessPct = Number.isFinite(rawBrightness)
+	      ? Math.max(1, Math.min(100, Math.round((rawBrightness / 255) * 100)))
+	      : 100;
+	    if (brightnessEl) {
+	      if (!this._lightControlDragging?.brightness) {
+	        brightnessEl.value = String(brightnessPct);
+	      }
+	      brightnessEl.style.setProperty('--track', 'linear-gradient(90deg, #5bb4ff 0%, #ffd56f 55%, #ff8a56 100%)');
+	      brightnessEl.style.setProperty('--glow', 'rgba(255, 190, 102, 0.48)');
+	    }
 
-    const isOn = state.state === 'on';
-    if (powerBtn) {
-      powerBtn.classList.toggle('is-on', isOn);
-      powerBtn.textContent = isOn ? 'On' : 'Off';
-    }
+	    const isOn = state.state === 'on';
+	    if (powerToggle) {
+	      powerToggle.dataset.on = isOn ? 'true' : 'false';
+	      powerToggle.setAttribute('aria-checked', isOn ? 'true' : 'false');
+	    }
 
-    const hue = Number.isFinite(Number(state.attributes?.hs_color?.[0]))
-      ? Number(state.attributes.hs_color[0])
-      : 30;
-    if (colorEl) {
-      colorEl.value = String(Math.round(hue));
-      colorEl.disabled = !this._lightControlUseColor;
-      this._setColorSliderGlow(hue);
-    }
+	    if (colorGroup) {
+	      colorGroup.classList.toggle('is-hidden', !this._lightControlSupportsColor);
+	    }
+	    if (tempGroup) {
+	      tempGroup.classList.toggle('is-hidden', !this._lightControlSupportsTemp);
+	    }
 
-    const minMired = Number(state.attributes?.min_mireds);
-    const maxMired = Number(state.attributes?.max_mireds);
-    const min = Number.isFinite(minMired) ? minMired : 153;
-    const max = Number.isFinite(maxMired) ? maxMired : 500;
-    const colorTempRaw = Number(state.attributes?.color_temp);
-    const colorTemp = Number.isFinite(colorTempRaw)
-      ? Math.max(min, Math.min(max, colorTempRaw))
-      : Math.round((min + max) / 2);
+	    const hue = Number.isFinite(Number(state.attributes?.hs_color?.[0]))
+	      ? Number(state.attributes.hs_color[0])
+	      : 30;
+	    if (colorEl) {
+	      if (!this._lightControlDragging?.color) {
+	        colorEl.value = String(Math.round(hue));
+	      }
+	      colorEl.disabled = !this._lightControlSupportsColor;
+	      this._setColorSliderGlow(hue);
+	    }
 
-    if (tempEl) {
-      tempEl.min = String(min);
-      tempEl.max = String(max);
-      tempEl.value = String(colorTemp);
-      tempEl.disabled = !this._lightControlUseTemp;
-      this._setTempSliderGlow(colorTemp, min, max);
-    }
+	    const minMired = Number(state.attributes?.min_mireds);
+	    const maxMired = Number(state.attributes?.max_mireds);
+	    const min = Number.isFinite(minMired) ? minMired : 153;
+	    const max = Number.isFinite(maxMired) ? maxMired : 500;
+	    const colorTempRaw = Number(state.attributes?.color_temp);
+	    const colorTemp = Number.isFinite(colorTempRaw)
+	      ? Math.max(min, Math.min(max, colorTempRaw))
+	      : Math.round((min + max) / 2);
 
-    if (colorBtn) colorBtn.classList.toggle('is-on', this._lightControlUseColor);
-    if (tempBtn) tempBtn.classList.toggle('is-on', this._lightControlUseTemp);
-  }
+	    if (tempEl) {
+	      tempEl.min = String(min);
+	      tempEl.max = String(max);
+	      if (!this._lightControlDragging?.temp) {
+	        tempEl.value = String(colorTemp);
+	      }
+	      tempEl.disabled = !this._lightControlSupportsTemp;
+	      this._setTempSliderGlow(colorTemp, min, max);
+	    }
+	  }
 
   _setColorSliderGlow(hue) {
     const slider = this.shadowRoot.querySelector('.light-control-color');
