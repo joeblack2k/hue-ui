@@ -71,7 +71,23 @@ export function getRoomsIndexOverride() {
   try {
     const raw = storage.getItem(ROOMS_INDEX_OVERRIDE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Safety: a corrupt/empty override can wipe the UI. If it doesn't look like
+    // a real rooms index, ignore it (and clear it) so the UI falls back to disk.
+    const rooms = parsed?.rooms;
+    const looksValid = parsed
+      && typeof parsed === 'object'
+      && Array.isArray(rooms)
+      && rooms.length > 0;
+    if (!looksValid) {
+      try {
+        storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
+      } catch (_e) {
+        // ignore
+      }
+      return null;
+    }
+    return parsed;
   } catch (error) {
     console.warn('[Config Loader] Failed to parse rooms index override:', error);
     return null;
