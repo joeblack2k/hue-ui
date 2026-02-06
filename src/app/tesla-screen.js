@@ -7,45 +7,141 @@
  * and the device kind is "tesla".
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.45';
-import { handleAction, hapticFeedback } from './events3.js?v=3.1.45';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.46';
+import { handleAction, hapticFeedback } from './events3.js?v=3.1.46';
 
 const TESLA_SCREEN_STYLES = `
-  .tesla-screen {
-    max-width: 920px;
-    margin: 0 auto;
-    padding: 26px 16px 34px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+  /* Root structure: pinned header + separate scroll container (same as rooms). */
+  .tesla-root {
+    position: relative;
+    height: 100%;
+    min-height: 100%;
     font-family: var(--hue-font-family);
     color: var(--hue-text-primary);
   }
 
-  .tesla-topbar {
+  .tesla-header-pinned {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 16px 18px 0 18px;
+    pointer-events: none;
+  }
+
+  .tesla-header-pinned::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -20px;
+    height: 20px;
+    background: linear-gradient(180deg, rgba(58,42,26,0.5) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* Room-like header bar + back button (same design language) */
+  .hue-header-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background:
+      linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.12) 100%),
+      linear-gradient(120deg, #5a4a3a 0%, #3f3226 100%);
+    box-shadow: var(--hue-shadow-card);
+    pointer-events: auto;
+    transition: background 180ms ease, box-shadow 180ms ease;
   }
 
-  .tesla-back-btn {
-    height: 34px;
+  .hue-header-bar[data-state="charging"] {
+    background: linear-gradient(120deg, rgba(87, 199, 255, 0.8) 0%, rgba(0, 120, 170, 0.7) 100%);
+    box-shadow:
+      var(--hue-shadow-card),
+      0 0 0 1px rgba(87, 199, 255, 0.22) inset;
+  }
+
+  .hue-header-bar[data-state="driving"] {
+    background: linear-gradient(120deg, rgba(55, 214, 107, 0.78) 0%, rgba(26, 140, 74, 0.7) 100%);
+    box-shadow:
+      var(--hue-shadow-card),
+      0 0 0 1px rgba(55, 214, 107, 0.22) inset;
+  }
+
+  .hue-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .hue-header-back {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
     border-radius: var(--hue-radius-full);
-    border: 1px solid rgba(255,255,255,0.18);
-    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.18);
     color: var(--hue-text-primary);
-    padding: 0 12px;
-    font-size: 12px;
-    font-weight: 800;
+    font-size: 22px;
     cursor: pointer;
     box-shadow: var(--hue-shadow-button);
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: auto;
+  }
+
+  .hue-header-back::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .hue-header-title {
+    font-size: 22px;
+    font-weight: var(--hue-font-weight-semibold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: var(--hue-text-shadow);
   }
 
   .tesla-topmeta {
     display: flex;
     align-items: center;
     gap: 8px;
+    pointer-events: auto;
+  }
+
+  .tesla-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    z-index: 10;
+  }
+
+  .tesla-scroll::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+  }
+
+  .tesla-scroll-content {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 102px 18px 32px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .tesla-chip {
@@ -453,99 +549,107 @@ export function renderTeslaScreen(hass, roomsIndex, deviceId) {
   ].filter(Boolean);
 
   const html = `
-    <div class="tesla-screen">
-      <div class="tesla-topbar">
-        <button class="tesla-back-btn" data-tesla-nav="back" data-path="${escapeHtml(dashboardPath)}">&#8249; Terug</button>
-        <div class="tesla-topmeta">
-          <div class="tesla-chip ${escapeHtml(chipClass)}">
-            <span class="dot"></span>
-            <span>${escapeHtml(chipLabel)}</span>
+    <div class="tesla-root">
+      <div class="tesla-header-pinned">
+        <div class="hue-header-bar" data-state="${escapeHtml(isDriving ? 'driving' : isCharging ? 'charging' : 'parked')}">
+          <div class="hue-header-left">
+            <button class="hue-header-back" data-tesla-nav="back" data-path="${escapeHtml(dashboardPath)}" aria-label="Terug">&#8249;</button>
+            <div class="hue-header-title">${escapeHtml(vehicleName)}</div>
+          </div>
+          <div class="tesla-topmeta">
+            <div class="tesla-chip ${escapeHtml(chipClass)}">
+              <span class="dot"></span>
+              <span>${escapeHtml(chipLabel)}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="tesla-hero">
-        <div class="tesla-hero-row">
-          <div class="tesla-title">
-            <div class="tesla-name">${escapeHtml(vehicleName)}</div>
-            <div class="tesla-subtitle">
-              ${escapeHtml(buildHeroSubtitle({ batteryPercent, rangeKm, inside, outside, isCharging, chargerPower, chargeRate }))}
+      <div class="tesla-scroll">
+        <div class="tesla-scroll-content">
+          <div class="tesla-hero">
+            <div class="tesla-hero-row">
+              <div class="tesla-title">
+                <div class="tesla-name">${escapeHtml(vehicleName)}</div>
+                <div class="tesla-subtitle">
+                  ${escapeHtml(buildHeroSubtitle({ batteryPercent, rangeKm, inside, outside, isCharging, chargerPower, chargeRate }))}
+                </div>
+              </div>
+
+              ${isDriving && speed != null ? `
+                <div class="tesla-speed">
+                  <div class="tesla-speed-value">${escapeHtml(String(Math.round(speed)))}</div>
+                  <div class="tesla-speed-unit">km/h</div>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="tesla-battery">
+              <div class="tesla-battery-track">
+                <div class="tesla-battery-fill" style="width:${batteryPercent}%;background:${escapeHtml(barColor)};"></div>
+              </div>
+              <div class="tesla-battery-legend">
+                <div>${batteryPercent}% <span class="muted">SOC</span></div>
+                <div>${rangeKm != null ? escapeHtml(String(Math.round(rangeKm))) : '--'} <span class="muted">km</span></div>
+              </div>
             </div>
           </div>
 
-          ${isDriving && speed != null ? `
-            <div class="tesla-speed">
-              <div class="tesla-speed-value">${escapeHtml(String(Math.round(speed)))}</div>
-              <div class="tesla-speed-unit">km/h</div>
+          <div class="tesla-grid">
+            <div class="tesla-card">
+              <div class="tesla-card-title">Snelle acties</div>
+              <div class="tesla-actions">
+                ${quickButtons.map((btn) => renderActionButton(btn)).join('')}
+              </div>
             </div>
-          ` : ''}
-        </div>
 
-        <div class="tesla-battery">
-          <div class="tesla-battery-track">
-            <div class="tesla-battery-fill" style="width:${batteryPercent}%;background:${escapeHtml(barColor)};"></div>
-          </div>
-          <div class="tesla-battery-legend">
-            <div>${batteryPercent}% <span class="muted">SOC</span></div>
-            <div>${rangeKm != null ? escapeHtml(String(Math.round(rangeKm))) : '--'} <span class="muted">km</span></div>
-          </div>
-        </div>
-      </div>
+            <div class="tesla-card">
+              <div class="tesla-card-title">Status</div>
+              <div class="tesla-statrow">
+                ${renderStat('Binnen', inside != null ? `${round1(inside)}°` : '--')}
+                ${renderStat('Buiten', outside != null ? `${round1(outside)}°` : '--')}
+                ${renderStat('Driver', readNumber(hass, entities.driver_temperature_setting, null) != null ? `${round1(readNumber(hass, entities.driver_temperature_setting, null))}°` : '--')}
+                ${renderStat('Pass.', readNumber(hass, entities.passenger_temperature_setting, null) != null ? `${round1(readNumber(hass, entities.passenger_temperature_setting, null))}°` : '--')}
+                ${renderStat('Odometer', odometer != null ? `${Math.round(odometer)} km` : '--')}
+                ${renderStat('Charge', chargingState ? chargingState : '--')}
+                ${renderStat('Power', chargerPower != null ? `${round1(chargerPower)} kW` : '--')}
+                ${renderStat('Rate', chargeRate != null ? `${Math.round(chargeRate)} km/h` : '--')}
+              </div>
+            </div>
 
-      <div class="tesla-grid">
-        <div class="tesla-card">
-          <div class="tesla-card-title">Snelle acties</div>
-          <div class="tesla-actions">
-            ${quickButtons.map((btn) => renderActionButton(btn)).join('')}
-          </div>
-        </div>
+            <div class="tesla-card">
+              <div class="tesla-card-title">Opladen</div>
+              <div class="tesla-form">
+                ${renderNumberSlider(hass, entities.charge_limit, { label: 'Charge limit', icon: 'mdi:battery-charging-80', unit: '%' })}
+                ${renderNumberSlider(hass, entities.charge_current, { label: 'Charge current', icon: 'mdi:current-ac', unit: 'A' })}
+              </div>
+            </div>
 
-        <div class="tesla-card">
-          <div class="tesla-card-title">Status</div>
-          <div class="tesla-statrow">
-            ${renderStat('Binnen', inside != null ? `${round1(inside)}°` : '--')}
-            ${renderStat('Buiten', outside != null ? `${round1(outside)}°` : '--')}
-            ${renderStat('Driver', readNumber(hass, entities.driver_temperature_setting, null) != null ? `${round1(readNumber(hass, entities.driver_temperature_setting, null))}°` : '--')}
-            ${renderStat('Pass.', readNumber(hass, entities.passenger_temperature_setting, null) != null ? `${round1(readNumber(hass, entities.passenger_temperature_setting, null))}°` : '--')}
-            ${renderStat('Odometer', odometer != null ? `${Math.round(odometer)} km` : '--')}
-            ${renderStat('Charge', chargingState ? chargingState : '--')}
-            ${renderStat('Power', chargerPower != null ? `${round1(chargerPower)} kW` : '--')}
-            ${renderStat('Rate', chargeRate != null ? `${Math.round(chargeRate)} km/h` : '--')}
-          </div>
-        </div>
-
-        <div class="tesla-card">
-          <div class="tesla-card-title">Opladen</div>
-          <div class="tesla-form">
-            ${renderNumberSlider(hass, entities.charge_limit, { label: 'Charge limit', icon: 'mdi:battery-charging-80', unit: '%' })}
-            ${renderNumberSlider(hass, entities.charge_current, { label: 'Charge current', icon: 'mdi:current-ac', unit: 'A' })}
-            ${entities.charge_cable_lock ? renderToggleLike(hass, entities.charge_cable_lock, { label: 'Cable lock', icon: 'mdi:lock' }) : ''}
-          </div>
-        </div>
-
-        <div class="tesla-card">
-          <div class="tesla-card-title">Security & Comfort</div>
-          <div class="tesla-actions">
-            ${entities.valet_mode ? renderActionButton({ icon: 'mdi:key', label: 'Valet', action: 'toggle', entity: entities.valet_mode, isOn: valetOn }) : ''}
-            ${entities.defrost_mode ? renderActionButton({ icon: 'mdi:snowflake', label: 'Defrost', action: 'toggle', entity: entities.defrost_mode, isOn: defrostOn }) : ''}
-            ${entities.steering_wheel_heater ? renderActionButton({ icon: 'mdi:steering', label: 'Stuur', action: 'toggle', entity: entities.steering_wheel_heater, isOn: wheelHeatOn }) : ''}
-            ${entities.charge_cable_lock ? renderActionButton({
-              icon: 'mdi:lock',
-              label: 'Cable lock',
-              action: String(hass?.states?.[entities.charge_cable_lock]?.state || '').toLowerCase() === 'locked' ? 'unlock' : 'lock',
-              entity: entities.charge_cable_lock,
-              isOn: String(hass?.states?.[entities.charge_cable_lock]?.state || '').toLowerCase() === 'locked',
-            }) : ''}
-          </div>
-          <div style="height:10px"></div>
-          <div class="tesla-form">
-            ${renderNumberSlider(hass, entities.speed_limit, { label: 'Speed limit', icon: 'mdi:speedometer' })}
-            ${renderSelectControl(hass, entities.seat_heater_left, { label: 'Seat heat (L)', icon: 'mdi:car-seat-heater' })}
-            ${renderSelectControl(hass, entities.seat_heater_right, { label: 'Seat heat (R)', icon: 'mdi:car-seat-heater' })}
-            ${renderSelectControl(hass, entities.seat_heater_rear_left, { label: 'Rear heat (L)', icon: 'mdi:car-seat-heater' })}
-            ${renderSelectControl(hass, entities.seat_heater_rear_right, { label: 'Rear heat (R)', icon: 'mdi:car-seat-heater' })}
-            ${renderSelectControl(hass, entities.seat_cooler_left, { label: 'Seat cool (L)', icon: 'mdi:snowflake' })}
-            ${renderSelectControl(hass, entities.seat_cooler_right, { label: 'Seat cool (R)', icon: 'mdi:snowflake' })}
+            <div class="tesla-card">
+              <div class="tesla-card-title">Security & Comfort</div>
+              <div class="tesla-actions">
+                ${entities.valet_mode ? renderActionButton({ icon: 'mdi:key', label: 'Valet', action: 'toggle', entity: entities.valet_mode, isOn: valetOn }) : ''}
+                ${entities.defrost_mode ? renderActionButton({ icon: 'mdi:snowflake', label: 'Defrost', action: 'toggle', entity: entities.defrost_mode, isOn: defrostOn }) : ''}
+                ${entities.steering_wheel_heater ? renderActionButton({ icon: 'mdi:steering', label: 'Stuur', action: 'toggle', entity: entities.steering_wheel_heater, isOn: wheelHeatOn }) : ''}
+                ${entities.charge_cable_lock ? renderActionButton({
+                  icon: 'mdi:lock',
+                  label: 'Cable lock',
+                  action: String(hass?.states?.[entities.charge_cable_lock]?.state || '').toLowerCase() === 'locked' ? 'unlock' : 'lock',
+                  entity: entities.charge_cable_lock,
+                  isOn: String(hass?.states?.[entities.charge_cable_lock]?.state || '').toLowerCase() === 'locked',
+                }) : ''}
+              </div>
+              <div style="height:10px"></div>
+              <div class="tesla-form">
+                ${renderNumberSlider(hass, entities.speed_limit, { label: 'Speed limit', icon: 'mdi:speedometer' })}
+                ${renderSelectControl(hass, entities.seat_heater_left, { label: 'Seat heat (L)', icon: 'mdi:car-seat-heater' })}
+                ${renderSelectControl(hass, entities.seat_heater_right, { label: 'Seat heat (R)', icon: 'mdi:car-seat-heater' })}
+                ${renderSelectControl(hass, entities.seat_heater_rear_left, { label: 'Rear heat (L)', icon: 'mdi:car-seat-heater' })}
+                ${renderSelectControl(hass, entities.seat_heater_rear_right, { label: 'Rear heat (R)', icon: 'mdi:car-seat-heater' })}
+                ${renderSelectControl(hass, entities.seat_cooler_left, { label: 'Seat cool (L)', icon: 'mdi:snowflake' })}
+                ${renderSelectControl(hass, entities.seat_cooler_right, { label: 'Seat cool (R)', icon: 'mdi:snowflake' })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -678,7 +782,10 @@ function discoverTeslaEntities(hass, device) {
   if (!hass?.states) return result;
 
   // Prefer a per-vehicle prefix (Tessie style), e.g. sensor.anne_fleur_battery_level.
-  const prefix = discoverTeslaPrefix(hass) || '';
+  // Use config override when provided (most reliable).
+  const cfg = device?.tesla || {};
+  const cfgPrefix = normalizePrefix(cfg.prefix || cfg.vehicle_prefix || '');
+  const prefix = cfgPrefix || discoverTeslaPrefix(hass) || '';
   result.prefix = prefix;
 
   const s = (domain, suffix) => (prefix ? `${domain}.${prefix}_${suffix}` : '');
@@ -744,6 +851,15 @@ function discoverTeslaEntities(hass, device) {
   }
 
   return result;
+}
+
+function normalizePrefix(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
 }
 
 function discoverTeslaPrefix(hass) {

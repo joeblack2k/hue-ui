@@ -10,11 +10,11 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.45';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.45';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.45';
-import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.45';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.45';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.46';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.46';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.46';
+import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.46';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.46';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1539,9 +1539,7 @@ class HueHomeScreen extends HTMLElement {
           <ha-card>
             <div class="hue-root">
               <div class="hue-background"></div>
-              <div class="content-scroll">
-                ${teslaResult.html}
-              </div>
+              ${teslaResult.html}
             </div>
           </ha-card>
         `;

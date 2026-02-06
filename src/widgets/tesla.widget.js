@@ -4,7 +4,7 @@
  * Battery bar (color-coded), SOC %, range, status, charging/driving animations.
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.45';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.46';
 
 /**
  * Render a Tesla device tile for the home screen
@@ -220,6 +220,23 @@ function discoverTeslaTileEntities(hass, device) {
   };
 
   if (!hass?.states) return result;
+
+  // Config override: explicit vehicle prefix (recommended for Tessie).
+  const configuredPrefixRaw = String(teslaCfg.prefix || '').trim();
+  const configuredPrefix = configuredPrefixRaw
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+  if (configuredPrefix) {
+    const battery = `sensor.${configuredPrefix}_battery_level`;
+    if (hass.states[battery]) {
+      result.battery = result.battery || battery;
+      result.range = result.range || `sensor.${configuredPrefix}_battery_range`;
+      result.speed = result.speed || `sensor.${configuredPrefix}_speed`;
+      result.shift_state = result.shift_state || `sensor.${configuredPrefix}_shift_state`;
+      result.charging = result.charging || `sensor.${configuredPrefix}_charging`;
+    }
+  }
 
   // If explicitly configured, we're done.
   if (result.battery && result.speed) return result;
