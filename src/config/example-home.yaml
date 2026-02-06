@@ -1,0 +1,58 @@
+# Example Hue Home Dashboard Configuration
+# Add this as a card in your Lovelace dashboard
+
+type: custom:hue-home-dashboard
+title: Home
+subtitle: Welcome back
+rooms:
+  - name: Living Room
+    icon: 🛋️
+    path: /lovelace-hue/living-room
+    lights:
+      - light.living_room_ceiling
+      - light.living_room_lamp
+      - light.living_room_strip
+    climate: climate.living_room
+    temperature_sensor: sensor.living_room_temperature
+
+  - name: Kitchen
+    icon: 🍳
+    path: /lovelace-hue/kitchen
+    lights:
+      - light.kitchen_ceiling
+      - light.kitchen_counter
+    temperature_sensor: sensor.kitchen_temperature
+
+  - name: Bedroom
+    icon: 🛏️
+    path: /lovelace-hue/bedroom
+    lights:
+      - light.bedroom_ceiling
+      - light.bedside_lamp_left
+      - light.bedside_lamp_right
+    climate: climate.bedroom
+    temperature_sensor: sensor.bedroom_temperature
+
+  - name: Office
+    icon: 💼
+    path: /lovelace-hue/office
+    lights:
+      - light.office_ceiling
+      - light.desk_lamp
+    temperature_sensor: sensor.office_temperature
+
+  - name: Bathroom
+    icon: 🚿
+    path: /lovelace-hue/bathroom
+    lights:
+      - light.bathroom_ceiling
+      - light.bathroom_mirror
+    temperature_sensor: sensor.bathroom_temperature
+    humidity_sensor: sensor.bathroom_humidity
+
+  - name: Garden
+    icon: 🌿
+    path: /lovelace-hue/garden
+    lights:
+      - light.garden_spots
+      - light.patio_string_lights

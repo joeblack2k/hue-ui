@@ -1,0 +1,130 @@
+/**
+ * Hue UI Design Tokens
+ * iOS 6 Skeuomorphic style with depth and shadows
+ */
+
+:host {
+  /* Background gradients - leather texture feel */
+  --hue-bg-gradient: linear-gradient(180deg,
+    #5a4a3a 0%,
+    #4a3a2a 20%,
+    #3a2a1a 80%,
+    #2a1a0a 100%);
+  --hue-bg-dark: #1a0a00;
+  --hue-bg-leather: #3a2a1a;
+
+  /* Surface colors - glossy card effect */
+  --hue-surface: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(0, 0, 0, 0.1) 100%);
+  --hue-surface-solid: rgba(60, 50, 40, 0.95);
+  --hue-surface-2: rgba(255, 255, 255, 0.12);
+  --hue-surface-3: rgba(255, 255, 255, 0.18);
+  --hue-surface-hover: rgba(255, 255, 255, 0.18);
+  --hue-surface-active: rgba(255, 255, 255, 0.22);
+  --hue-surface-inset: rgba(0, 0, 0, 0.3);
+
+  /* Text colors */
+  --hue-text-primary: #ffffff;
+  --hue-text-secondary: rgba(255, 255, 255, 0.8);
+  --hue-text-muted: rgba(255, 255, 255, 0.5);
+  --hue-text-disabled: rgba(255, 255, 255, 0.3);
+  --hue-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+  /* Accent colors - glossy */
+  --hue-gold: #c9a227;
+  --hue-gold-light: #f0c75e;
+  --hue-gold-dark: #9a7a1a;
+  --hue-gold-gradient: linear-gradient(180deg, #f0c75e 0%, #c9a227 50%, #9a7a1a 100%);
+  --hue-green: #4caf50;
+  --hue-green-gradient: linear-gradient(180deg, #81c784 0%, #4caf50 50%, #388e3c 100%);
+  --hue-blue: #29b6f6;
+  --hue-blue-gradient: linear-gradient(180deg, #4fc3f7 0%, #29b6f6 50%, #0288d1 100%);
+  --hue-red: #ff5722;
+  --hue-red-gradient: linear-gradient(180deg, #ff8a65 0%, #ff5722 50%, #d84315 100%);
+  --hue-orange: #ff9800;
+  --hue-purple: #ab47bc;
+
+  /* Temperature colors */
+  --hue-temp-heating: linear-gradient(180deg, #ff8a65 0%, #ff5722 50%, #d84315 100%);
+  --hue-temp-cooling: linear-gradient(180deg, #4fc3f7 0%, #29b6f6 50%, #0288d1 100%);
+  --hue-temp-idle: rgba(255, 255, 255, 0.5);
+
+  /* Light colors */
+  --hue-light-warm: #ffb74d;
+  --hue-light-neutral: #fff8e1;
+  --hue-light-cool: #e3f2fd;
+
+  /* Spacing scale */
+  --hue-space-1: 4px;
+  --hue-space-2: 8px;
+  --hue-space-3: 12px;
+  --hue-space-4: 16px;
+  --hue-space-5: 20px;
+  --hue-space-6: 24px;
+  --hue-space-8: 32px;
+
+  /* Border radii */
+  --hue-radius-sm: 8px;
+  --hue-radius-md: 12px;
+  --hue-radius-lg: 16px;
+  --hue-radius-xl: 20px;
+  --hue-radius-full: 9999px;
+
+  /* Skeuomorphic shadows */
+  --hue-shadow-outset:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.2) inset,
+    0 4px 8px rgba(0, 0, 0, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+  --hue-shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.15) inset,
+    0 8px 16px rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+  --hue-shadow-inset:
+    0 2px 4px rgba(0, 0, 0, 0.4) inset,
+    0 1px 2px rgba(0, 0, 0, 0.3) inset;
+  --hue-shadow-button:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.1) inset,
+    0 3px 6px rgba(0, 0, 0, 0.3);
+  --hue-shadow-toggle:
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+  --hue-shadow-glow: 0 0 20px rgba(201, 162, 39, 0.5);
+
+  /* Typography */
+  --hue-font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --hue-font-size-xs: 11px;
+  --hue-font-size-sm: 13px;
+  --hue-font-size-md: 15px;
+  --hue-font-size-lg: 17px;
+  --hue-font-size-xl: 20px;
+  --hue-font-size-2xl: 28px;
+  --hue-font-weight-normal: 400;
+  --hue-font-weight-medium: 500;
+  --hue-font-weight-semibold: 600;
+  --hue-font-weight-bold: 700;
+
+  /* Transitions */
+  --hue-transition-fast: 150ms ease;
+  --hue-transition-normal: 250ms ease;
+  --hue-transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Toggle dimensions */
+  --hue-toggle-width: 52px;
+  --hue-toggle-height: 32px;
+  --hue-toggle-knob: 26px;
+
+  /* Icon sizes */
+  --hue-icon-sm: 18px;
+  --hue-icon-md: 24px;
+  --hue-icon-lg: 32px;
+
+  /* Widget dimensions */
+  --hue-widget-width: 160px;
+  --hue-widget-height: 160px;
+  --hue-widget-expanded-width: 328px;
+}

@@ -1,0 +1,115 @@
+# Example Hue Room Screen Configuration
+# Create a separate view/panel for each room
+
+# Living Room Example
+type: custom:hue-room-screen
+name: Living Room
+icon: 🛋️
+back_path: /lovelace-hue/home
+
+# Status sensors shown in header
+temperature_sensor: sensor.living_room_temperature
+humidity_sensor: sensor.living_room_humidity
+motion_sensor: binary_sensor.living_room_motion
+
+# Lighting section
+lights:
+  - light.living_room_ceiling
+  - light.living_room_lamp
+  - light.living_room_strip
+  - light.living_room_corner
+lights_layout: list  # 'list' or 'grid'
+
+# Climate section
+climate: climate.living_room
+
+# Devices section
+devices:
+  - entity: media_player.living_room_tv
+    name: TV
+    icon: mdi:television
+    power_sensor: sensor.tv_power
+
+  - entity: media_player.sonos_living_room
+    name: Sonos
+    icon: mdi:speaker
+
+  - entity: switch.living_room_fan
+    name: Fan
+    icon: mdi:fan
+
+  - entity: cover.living_room_blinds
+    name: Blinds
+    icon: mdi:blinds
+
+  - entity: binary_sensor.living_room_motion
+    name: Motion
+    icon: mdi:motion-sensor
+
+  - entity: sensor.living_room_air_quality
+    name: Air Quality
+    icon: mdi:air-filter
+
+---
+# Bedroom Example
+type: custom:hue-room-screen
+name: Bedroom
+icon: 🛏️
+back_path: /lovelace-hue/home
+
+temperature_sensor: sensor.bedroom_temperature
+humidity_sensor: sensor.bedroom_humidity
+
+lights:
+  - light.bedroom_ceiling
+  - light.bedside_lamp_left
+  - light.bedside_lamp_right
+lights_layout: list
+
+climate: climate.bedroom
+
+devices:
+  - entity: fan.bedroom_fan
+    name: Ceiling Fan
+    icon: mdi:fan
+
+  - entity: cover.bedroom_curtains
+    name: Curtains
+    icon: mdi:curtains
+
+  - entity: switch.electric_blanket
+    name: Electric Blanket
+    icon: mdi:bed
+
+---
+# Office Example
+type: custom:hue-room-screen
+name: Office
+icon: 💼
+back_path: /lovelace-hue/home
+
+temperature_sensor: sensor.office_temperature
+
+lights:
+  - light.office_ceiling
+  - light.desk_lamp
+  - light.monitor_backlight
+lights_layout: grid
+
+devices:
+  - entity: switch.office_computer
+    name: Computer
+    icon: mdi:desktop-tower-monitor
+    power_sensor: sensor.computer_power
+
+  - entity: switch.office_monitor
+    name: Monitor
+    icon: mdi:monitor
+
+  - entity: sensor.office_co2
+    name: CO2
+    icon: mdi:molecule-co2
+
+  - entity: binary_sensor.office_occupancy
+    name: Occupancy
+    icon: mdi:account
