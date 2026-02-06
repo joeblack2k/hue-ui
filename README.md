@@ -99,3 +99,9 @@ This repo should stay safe to share publicly.
 ## Changelog
 
 See `CHANGELOG.md`.
+
+### Highlights (Latest)
+
+- Fresh-install setup guide and safe example configs.
+- Hue-style Home + Room screens with in-UI editors and pagination.
+- Person detail screen (map + battery + sensors) and sidebar escape via tapping the home title.
