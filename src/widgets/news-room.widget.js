@@ -332,6 +332,10 @@ export const NEWS_ROOM_CSS = `
 
     .newsr-agenda-list {
       display: block;
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(0,0,0,0.16);
+      border: 1px solid rgba(255,255,255,0.08);
     }
 
   .newsr-status {
