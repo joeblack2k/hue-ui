@@ -6,119 +6,272 @@
  * - hue-home-screen: Weather + room tiles grid (restored Hue look)
  * - hue-room-screen: Config-driven room with sections (lighting, climate, devices)
  *
- * @version 3.1.78
+ * @version 3.1.79
  */
 
 console.info(
-  '%c HUE-UI %c v3.1.78 %c Config-Driven ',
+  '%c HUE-UI %c v3.1.79 %c Config-Driven ',
   'color: #fff; background: #c9a227; font-weight: bold; padding: 2px 4px; border-radius: 3px 0 0 3px;',
   'color: #c9a227; background: #3a2a1a; font-weight: bold; padding: 2px 4px;',
   'color: #3a2a1a; background: #f0c75e; font-weight: bold; padding: 2px 4px; border-radius: 0 3px 3px 0;'
 );
 
+/**
+ * Kiosk Mode — hide HA header/tabs/sidebar when on the Hue UI dashboard.
+ *
+ * HA DOM structure (2024-2026):
+ *   document
+ *     └─ home-assistant  (shadowRoot)
+ *          └─ home-assistant-main  (shadowRoot)
+ *               ├─ ha-drawer            ← sidebar lives here
+ *               └─ ha-panel-lovelace  (shadowRoot)
+ *                    └─ hui-root  (shadowRoot)
+ *                         ├─ app-header / .header  ← toolbar + tabs
+ *                         └─ div#view              ← the cards
+ *
+ * The tab-bar that's visible in the screenshot sits inside hui-root's
+ * shadow root (as part of app-header or as a direct child).
+ * We must inject CSS into THAT shadow root AND use the right selectors
+ * that cover every HA version variant.
+ *
+ * Additionally we hide the sidebar drawer at the ha-main level and
+ * force --header-height to 0 so the content area fills the screen.
+ */
 const HUE_UI_KIOSK_STYLE_ID = 'hue-ui-kiosk-style';
+const HUE_UI_KIOSK_MAX_RETRIES = 40;    // 40 × 150ms = 6s max wait
+const HUE_UI_KIOSK_RETRY_MS = 150;
 let _kioskRetryTimer = null;
-let _kioskObserver = null;
-let _kioskHostRoot = null;
+let _kioskRetryCount = 0;
+let _kioskInjectedRoots = [];            // track all roots we injected into
+let _kioskObservers = [];                // MutationObservers on shadow roots
 
 function isHueUiPath(pathname) {
   const p = String(pathname || window.location?.pathname || '');
-  // Matches /hue-ui and /hue-ui/... and also /lovelace/hue-ui style routes.
   return p === '/hue-ui' || p.startsWith('/hue-ui/') || p.includes('/hue-ui');
 }
 
-function _getHuiRootShadow() {
-  // HA structure: home-assistant (shadow) -> home-assistant-main (shadow) -> ha-panel-lovelace (shadow) -> hui-root (shadow)
+/**
+ * Walk the HA shadow DOM and return all shadow roots we need to inject into.
+ *
+ * HA 2026.2 structure:
+ *   home-assistant (shadowRoot)
+ *     home-assistant-main (shadowRoot)
+ *       ha-drawer                         ← light DOM, may or may not have shadowRoot
+ *         partial-panel-resolver           ← light DOM
+ *           ha-panel-lovelace (shadowRoot)
+ *             hui-root (shadowRoot)
+ *               .header                    ← the tab bar / toolbar
+ *               #view                      ← the cards
+ *
+ * querySelector on a shadowRoot searches the light DOM subtree within it,
+ * but NOT into nested shadow roots. If ha-drawer has its own shadow root
+ * (which it does in some HA versions), ha-panel-lovelace won't be found
+ * by querying mainShadow directly. We must try multiple paths.
+ */
+function _getHAShadowRoots() {
   const ha = document.querySelector('home-assistant');
-  const main = ha?.shadowRoot?.querySelector('home-assistant-main');
-  const panel = main?.shadowRoot?.querySelector('ha-panel-lovelace');
-  const huiRoot = panel?.shadowRoot?.querySelector('hui-root');
-  return huiRoot?.shadowRoot || null;
+  const haShadow = ha?.shadowRoot;
+  const main = haShadow?.querySelector('home-assistant-main');
+  const mainShadow = main?.shadowRoot;
+
+  // Try multiple paths to find ha-panel-lovelace:
+  // Path 1: Direct query from mainShadow (works when ha-drawer has no shadow root)
+  // Path 2: Via ha-drawer's light DOM children
+  // Path 3: Via ha-drawer's shadow root (HA 2026.2+)
+  let panel = mainShadow?.querySelector('ha-panel-lovelace');
+  if (!panel) {
+    const drawer = mainShadow?.querySelector('ha-drawer');
+    // Try drawer's light DOM first
+    panel = drawer?.querySelector('ha-panel-lovelace');
+    // Try drawer's shadow root
+    if (!panel) {
+      panel = drawer?.shadowRoot?.querySelector('ha-panel-lovelace');
+    }
+    // Try via partial-panel-resolver
+    if (!panel) {
+      const resolver = drawer?.querySelector('partial-panel-resolver')
+        || drawer?.shadowRoot?.querySelector('partial-panel-resolver');
+      panel = resolver?.querySelector('ha-panel-lovelace');
+    }
+  }
+
+  const panelShadow = panel?.shadowRoot;
+  const huiRoot = panelShadow?.querySelector('hui-root');
+  const huiRootShadow = huiRoot?.shadowRoot;
+  return { haShadow, mainShadow, panelShadow, huiRootShadow };
 }
 
-function _injectKioskStyleInto(rootShadow) {
-  if (!rootShadow || typeof rootShadow.appendChild !== 'function') return false;
-  if (rootShadow.getElementById?.(HUE_UI_KIOSK_STYLE_ID)) return true;
+/** CSS to inject into hui-root's shadow root — hides header, toolbar, tabs */
+const KIOSK_CSS_HUI_ROOT = `
+  /* Hue UI kiosk — injected into hui-root shadowRoot */
+  app-header,
+  .header,
+  app-toolbar,
+  ha-tabs,
+  ha-tab-bar,
+  paper-tabs {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  :host {
+    --header-height: 0px !important;
+  }
+
+  #view {
+    min-height: 100vh !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+  }
+`;
+
+/** CSS to inject into home-assistant-main's shadow root — hides sidebar */
+const KIOSK_CSS_MAIN = `
+  /* Hue UI kiosk — injected into home-assistant-main shadowRoot */
+  ha-drawer > ha-sidebar,
+  ha-sidebar {
+    display: none !important;
+  }
+
+  ha-drawer {
+    --mdc-drawer-width: 0px !important;
+    --app-drawer-width: 0px !important;
+  }
+`;
+
+function _injectStyle(shadowRoot, css, idSuffix = '') {
+  if (!shadowRoot || typeof shadowRoot.appendChild !== 'function') return false;
+  const id = HUE_UI_KIOSK_STYLE_ID + idSuffix;
+  if (shadowRoot.getElementById?.(id)) return true; // already present
 
   const style = document.createElement('style');
-  style.id = HUE_UI_KIOSK_STYLE_ID;
-  style.textContent = `
-    /* Hue UI kiosk: hide top header/tabs only inside Lovelace (shadow-root local) */
-    app-header,
-    app-toolbar,
-    ha-tabs,
-    ha-tab-bar {
-      display: none !important;
-    }
-
-    :host {
-      --header-height: 0px !important;
-    }
-  `;
-  rootShadow.appendChild(style);
+  style.id = id;
+  style.textContent = css;
+  shadowRoot.appendChild(style);
   return true;
 }
 
-function _removeKioskStyle() {
+function _removeStyle(shadowRoot, idSuffix = '') {
+  if (!shadowRoot) return;
+  const id = HUE_UI_KIOSK_STYLE_ID + idSuffix;
   try {
-    const root = _kioskHostRoot || _getHuiRootShadow();
-    const el = root?.getElementById?.(HUE_UI_KIOSK_STYLE_ID);
-    el?.remove?.();
-  } catch (_e) {
-    // ignore
+    shadowRoot.getElementById?.(id)?.remove?.();
+  } catch (_e) { /* ignore */ }
+}
+
+function _removeAllKioskStyles() {
+  const { huiRootShadow, mainShadow } = _getHAShadowRoots();
+  _removeStyle(huiRootShadow, '-hui');
+  _removeStyle(mainShadow, '-main');
+
+  // Also remove from any previously tracked roots (in case HA replaced elements)
+  for (const [root, suffix] of _kioskInjectedRoots) {
+    _removeStyle(root, suffix);
   }
-  _kioskHostRoot = null;
-  if (_kioskObserver) {
-    try { _kioskObserver.disconnect(); } catch (_e) { /* ignore */ }
-    _kioskObserver = null;
+  _kioskInjectedRoots = [];
+
+  // Disconnect observers
+  for (const obs of _kioskObservers) {
+    try { obs.disconnect(); } catch (_e) { /* ignore */ }
   }
+  _kioskObservers = [];
+
   if (_kioskRetryTimer) {
     clearTimeout(_kioskRetryTimer);
     _kioskRetryTimer = null;
   }
+  _kioskRetryCount = 0;
 }
 
-function _scheduleKioskRetry() {
-  if (_kioskRetryTimer) return;
-  _kioskRetryTimer = setTimeout(() => {
-    _kioskRetryTimer = null;
-    syncHueUiKiosk();
-  }, 200);
+/**
+ * Also directly hide elements via style.display as a belt-and-suspenders
+ * approach — some HA versions use Lit's styleMap which can override CSS rules.
+ */
+function _forceHideElements(huiRootShadow) {
+  if (!huiRootShadow) return;
+  const selectors = ['app-header', '.header', 'app-toolbar', 'ha-tabs', 'ha-tab-bar', 'paper-tabs'];
+  for (const sel of selectors) {
+    try {
+      huiRootShadow.querySelectorAll?.(sel)?.forEach((el) => {
+        if (el instanceof HTMLElement) {
+          el.style.setProperty('display', 'none', 'important');
+        }
+      });
+    } catch (_e) { /* ignore */ }
+  }
+}
+
+/**
+ * Set up a MutationObserver on a shadow root so we re-inject if HA rebuilds.
+ * Shadow DOM mutations do NOT bubble to document.documentElement, so we must
+ * observe each shadow root individually.
+ */
+function _observeShadowRoot(shadowRoot, callback) {
+  if (!shadowRoot) return;
+  try {
+    const obs = new MutationObserver(callback);
+    obs.observe(shadowRoot, { childList: true, subtree: true });
+    _kioskObservers.push(obs);
+  } catch (_e) { /* ignore */ }
 }
 
 function syncHueUiKiosk() {
+  if (_kioskRetryTimer) {
+    clearTimeout(_kioskRetryTimer);
+    _kioskRetryTimer = null;
+  }
+
   const active = isHueUiPath(window.location?.pathname);
   if (!active) {
-    _removeKioskStyle();
+    _removeAllKioskStyles();
     return;
   }
 
-  const targetShadow = _getHuiRootShadow();
-  if (!targetShadow) {
-    _scheduleKioskRetry();
+  const { huiRootShadow, mainShadow, panelShadow } = _getHAShadowRoots();
+
+  // If hui-root's shadow root isn't available yet, retry.
+  if (!huiRootShadow) {
+    _kioskRetryCount += 1;
+    if (_kioskRetryCount < HUE_UI_KIOSK_MAX_RETRIES) {
+      _kioskRetryTimer = setTimeout(syncHueUiKiosk, HUE_UI_KIOSK_RETRY_MS);
+    }
     return;
   }
 
-  _kioskHostRoot = targetShadow;
-  const ok = _injectKioskStyleInto(targetShadow);
-  if (!ok) {
-    _scheduleKioskRetry();
-    return;
+  _kioskRetryCount = 0;
+
+  // Inject CSS into hui-root shadow (hides header/tabs)
+  if (_injectStyle(huiRootShadow, KIOSK_CSS_HUI_ROOT, '-hui')) {
+    _kioskInjectedRoots.push([huiRootShadow, '-hui']);
   }
 
-  // Watch for HA re-rendering/replacing hui-root (iOS/Safari can be slow/lazy).
-  if (!_kioskObserver) {
-    _kioskObserver = new MutationObserver(() => {
-      if (!isHueUiPath(window.location?.pathname)) return;
-      const shadow = _getHuiRootShadow();
-      if (!shadow) return;
-      _kioskHostRoot = shadow;
-      _injectKioskStyleInto(shadow);
+  // Inject CSS into home-assistant-main shadow (hides sidebar)
+  if (mainShadow && _injectStyle(mainShadow, KIOSK_CSS_MAIN, '-main')) {
+    _kioskInjectedRoots.push([mainShadow, '-main']);
+  }
+
+  // Belt-and-suspenders: also force-hide via inline style
+  _forceHideElements(huiRootShadow);
+
+  // Observe hui-root's shadow for re-renders (HA can rebuild the header)
+  if (_kioskObservers.length === 0) {
+    _observeShadowRoot(huiRootShadow, () => {
+      if (!isHueUiPath()) return;
+      const roots = _getHAShadowRoots();
+      if (roots.huiRootShadow) {
+        _injectStyle(roots.huiRootShadow, KIOSK_CSS_HUI_ROOT, '-hui');
+        _forceHideElements(roots.huiRootShadow);
+      }
     });
-    try {
-      _kioskObserver.observe(document.documentElement, { childList: true, subtree: true });
-    } catch (_e) {
-      // ignore
+
+    // Also observe panel-lovelace shadow — if hui-root gets replaced entirely
+    if (panelShadow) {
+      _observeShadowRoot(panelShadow, () => {
+        if (!isHueUiPath()) return;
+        // hui-root may have been swapped; re-run full sync after a tick
+        setTimeout(syncHueUiKiosk, 50);
+      });
     }
   }
 }
@@ -216,12 +369,12 @@ async function loadCardModule(tag, modulePath, fallbackMessage) {
 // cards before the custom elements are registered (avoids "Configuration Error").
 await loadCardModule(
   'hue-home-screen',
-  './app/hue-home-screen3.js?v=3.1.78',
+  './app/hue-home-screen3.js?v=3.1.79',
   'Hue Home Screen failed to load. Check resource imports in console.'
 );
 
 await loadCardModule(
   'hue-room-screen',
-  './app/hue-room-screen3.js?v=3.1.78',
+  './app/hue-room-screen3.js?v=3.1.79',
   'Hue Room Screen failed to load. Check resource imports in console.'
 );

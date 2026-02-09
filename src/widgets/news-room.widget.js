@@ -4,7 +4,7 @@
  * Room screen owns the fetching + Gemini generation. This file provides markup + CSS.
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.75';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.79';
 
 export const NEWS_ROOM_CSS = `
   .newsr-widget {
@@ -277,11 +277,42 @@ export const NEWS_ROOM_CSS = `
 
   .newsr-copy:active { transform: scale(0.98); }
 
+  .newsr-cal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(118,185,255,0.35);
+    background: rgba(118,185,255,0.12);
+    color: rgba(255,255,255,0.92);
+    font-size: 11px;
+    font-weight: 950;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .newsr-cal[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .newsr-cal:active { transform: scale(0.98); }
+
 	  .newsr-bottom {
 	    position: relative;
 	    margin-top: 12px;
 	    padding-top: 12px;
 	    border-top: 1px solid rgba(255,255,255,0.10);
+	  }
+
+	  .newsr-bottom-head {
+	    display: flex;
+	    align-items: baseline;
+	    justify-content: space-between;
+	    gap: 10px;
+	    margin-bottom: 8px;
 	  }
 
 	  .newsr-bottom-title {
@@ -290,7 +321,6 @@ export const NEWS_ROOM_CSS = `
 	    letter-spacing: 0.8px;
 	    text-transform: uppercase;
 	    color: rgba(245, 230, 211, 0.95);
-	    margin-bottom: 6px;
 	  }
 
 	  .newsr-bottom-text {
@@ -299,6 +329,10 @@ export const NEWS_ROOM_CSS = `
 	    color: rgba(255,255,255,0.82);
 	    white-space: pre-wrap;
 	  }
+
+    .newsr-agenda-list {
+      display: block;
+    }
 
   .newsr-status {
     position: relative;
@@ -332,10 +366,35 @@ function renderSlot(i, kind) {
   `;
 }
 
+function renderAgendaSlot(i) {
+  return `
+    <div class="newsr-item" data-kind="agenda" data-index="${i}">
+      <div class="newsr-strap" role="group" aria-label="Bron en datum">
+        <div class="newsr-strap-left">
+          <span class="newsr-strap-kicker">Bron</span>
+          <span class="newsr-strap-value" data-role="newsr-source">—</span>
+        </div>
+        <div class="newsr-strap-right">
+          <span class="newsr-strap-kicker">Datum</span>
+          <span class="newsr-strap-value newsr-strap-date" data-role="newsr-when">—</span>
+        </div>
+      </div>
+      <div class="newsr-headline" data-role="newsr-headline">Evenement</div>
+      <div class="newsr-summary" data-role="newsr-summary"></div>
+      <div class="newsr-meta">
+        <a class="newsr-link" data-role="newsr-link" href="#" target="_blank" rel="noopener noreferrer">Lees artikel</a>
+        <button class="newsr-cal" type="button" data-news-action="add_calendar" aria-disabled="true">Voeg toe aan kalender</button>
+        <button class="newsr-copy" type="button" data-news-action="copy">Kopieer</button>
+      </div>
+    </div>
+  `;
+}
+
 export function renderNewsRoomSection(section) {
   const title = String(section?.title || 'Nieuws');
   const locals = new Array(5).fill(0).map((_, i) => renderSlot(i, 'local')).join('');
   const nationals = new Array(5).fill(0).map((_, i) => renderSlot(i + 5, 'national')).join('');
+  const agendaSlots = new Array(10).fill(0).map((_, i) => renderAgendaSlot(i)).join('');
   return `
     <div class="newsr-widget" data-title="${escapeHtml(title)}">
       <div class="newsr-paper">
@@ -367,11 +426,19 @@ export function renderNewsRoomSection(section) {
           </div>
         </div>
 	        <div class="newsr-bottom">
-	          <div class="newsr-bottom-title">Agenda & open dagen</div>
-	          <div class="newsr-bottom-text" data-role="newsr-agenda">—</div>
+	          <div class="newsr-bottom-head">
+	            <div class="newsr-bottom-title">Agenda & open dagen</div>
+              <div class="newsr-colnote" data-role="newsr-agenda-note">10 items</div>
+            </div>
+	          <div class="newsr-agenda-list" data-role="newsr-agenda-list">
+              ${agendaSlots}
+            </div>
+	          <div class="newsr-bottom-text" data-role="newsr-agenda-fallback" style="display:none;">—</div>
 	        </div>
 	        <div class="newsr-bottom">
-	          <div class="newsr-bottom-title">Bouwen & vergunningen</div>
+	          <div class="newsr-bottom-head">
+              <div class="newsr-bottom-title">Bouwen & vergunningen</div>
+            </div>
 	          <div class="newsr-bottom-text" data-role="newsr-permits">—</div>
 	        </div>
 	        <div class="newsr-status" data-role="newsr-status">Laden…</div>

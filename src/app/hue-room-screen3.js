@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.78';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.78';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.78';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.78';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.78';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.78';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.78';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.78';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.78';
+} from './config-loader3.js?v=3.1.79';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.79';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.79';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.79';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.79';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.79';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.79';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.79';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.79';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.78';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.78';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.78';
+} from '../widgets/bitcoin.widget.js?v=3.1.79';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.79';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.79';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -2594,10 +2594,11 @@ class HueRoomScreen extends HTMLElement {
     const titleEl = widget.querySelector('[data-role="newsr-title"]');
     const subtitleEl = widget.querySelector('[data-role="newsr-subtitle"]');
     const stampEl = widget.querySelector('[data-role="newsr-datestamp"]');
-    const agendaEl = widget.querySelector('[data-role="newsr-agenda"]');
+    const agendaFallbackEl = widget.querySelector('[data-role="newsr-agenda-fallback"]');
     const permitsEl = widget.querySelector('[data-role="newsr-permits"]');
     const loadingEl = widget.querySelector('[data-role="newsr-loading"]');
     const statusEl = widget.querySelector('[data-role="newsr-status"]');
+    const agendaNoteEl = widget.querySelector('[data-role="newsr-agenda-note"]');
 
     if (loadingEl) loadingEl.classList.remove('is-visible');
     if (titleEl) titleEl.textContent = this._sanitizeNewsTextNoLinks(cache?.title || 'Weekkrantje');
@@ -2608,11 +2609,11 @@ class HueRoomScreen extends HTMLElement {
         ? new Date(ts).toLocaleString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })
         : new Date().toLocaleString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
     }
-    if (agendaEl) agendaEl.textContent = this._sanitizeNewsTextNoLinks(cache?.agenda_paragraph || '') || 'Geen open dagen of informatieavonden die er deze week uitspringen.';
     if (permitsEl) permitsEl.textContent = this._sanitizeNewsTextNoLinks(cache?.permits_paragraph || '') || 'Geen opvallende bouw- of vergunningupdates deze week.';
 
     const localSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="local"]')) || [];
     const natSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="national"]')) || [];
+    const agendaSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="agenda"]')) || [];
 
     const setSlot = (slotEl, item, { shouldType } = {}) => {
       const headlineEl = slotEl.querySelector('[data-role="newsr-headline"]');
@@ -2652,6 +2653,51 @@ class HueRoomScreen extends HTMLElement {
       }
     };
 
+    const setAgendaSlot = (slotEl, item) => {
+      const headlineEl = slotEl.querySelector('[data-role="newsr-headline"]');
+      const summaryEl = slotEl.querySelector('[data-role="newsr-summary"]');
+      const sourceEl = slotEl.querySelector('[data-role="newsr-source"]');
+      const whenEl = slotEl.querySelector('[data-role="newsr-when"]');
+      const linkEl = slotEl.querySelector('[data-role="newsr-link"]');
+      const copyBtn = slotEl.querySelector('[data-news-action="copy"]');
+      const calBtn = slotEl.querySelector('[data-news-action="add_calendar"]');
+
+      const headline = this._sanitizeNewsTextNoLinks(item?.headline || '—');
+      const summary = this._sanitizeNewsTextNoLinks(item?.summary || '');
+      if (headlineEl) headlineEl.textContent = headline;
+      if (summaryEl) summaryEl.textContent = summary;
+
+      const src = String(item?.source || '—').trim() || '—';
+      const loc = String(item?.location || '').trim();
+      if (sourceEl) sourceEl.textContent = loc ? `${src} • ${loc}` : src;
+
+      const when = this._formatAgendaWhen(item);
+      if (whenEl) whenEl.textContent = when;
+
+      const url = String(item?.url || '').trim();
+      if (linkEl) {
+        linkEl.href = url || '#';
+        linkEl.style.pointerEvents = url ? 'auto' : 'none';
+        linkEl.style.opacity = url ? '1' : '0.4';
+      }
+
+      slotEl.dataset.url = url || '';
+      slotEl.dataset.headline = headline;
+      slotEl.dataset.summary = summary;
+      slotEl.dataset.eventStart = String(item?.eventStart || '').trim();
+      slotEl.dataset.eventEnd = String(item?.eventEnd || '').trim();
+      slotEl.dataset.eventStartLocal = String(item?.eventStartLocal || '').trim();
+      slotEl.dataset.eventEndLocal = String(item?.eventEndLocal || '').trim();
+      slotEl.dataset.eventDateText = String(item?.eventDateText || '').trim();
+      slotEl.dataset.location = loc;
+      if (copyBtn) copyBtn.dataset.copyReady = 'true';
+
+      const canCal = !!(slotEl.dataset.eventStart || slotEl.dataset.eventStartLocal);
+      if (calBtn) {
+        calBtn.setAttribute('aria-disabled', canCal ? 'false' : 'true');
+      }
+    };
+
     const local = Array.isArray(cache?.local) ? cache.local : [];
     const national = Array.isArray(cache?.national) ? cache.national : [];
     const animateUrls = (cache && cache._animate_urls && Array.isArray(cache._animate_urls))
@@ -2672,7 +2718,158 @@ class HueRoomScreen extends HTMLElement {
       setSlot(natSlots[i], item, { shouldType });
     }
 
+    // Agenda tiles (preferred). Fallback to legacy paragraph if not available.
+    const agenda = Array.isArray(cache?.agenda) ? cache.agenda : [];
+    if (agendaNoteEl) agendaNoteEl.textContent = agenda.length ? `${agenda.length} items` : '—';
+
+    if (agendaSlots.length && agenda.length) {
+      for (let i = 0; i < agendaSlots.length; i += 1) {
+        setAgendaSlot(agendaSlots[i], agenda[i] || {});
+      }
+      if (agendaFallbackEl) agendaFallbackEl.style.display = 'none';
+    } else {
+      if (agendaSlots.length) {
+        for (let i = 0; i < agendaSlots.length; i += 1) setAgendaSlot(agendaSlots[i], {});
+      }
+      if (agendaFallbackEl) {
+        agendaFallbackEl.style.display = '';
+        agendaFallbackEl.textContent = this._sanitizeNewsTextNoLinks(cache?.agenda_paragraph || '') || 'Geen open dagen of informatieavonden die er deze week uitspringen.';
+      }
+    }
+
     if (statusEl) statusEl.textContent = cache?.status || 'Gereed';
+  }
+
+  _formatAgendaWhen(item) {
+    const dtTxt = String(item?.eventDateText || '').trim();
+    if (dtTxt) return dtTxt;
+    const startLocal = String(item?.eventStartLocal || '').trim();
+    const start = String(item?.eventStart || '').trim();
+    const raw = startLocal || start;
+    if (!raw) return '—';
+    try {
+      const d = new Date(raw);
+      // If raw is YYYY-MM-DD, Date() interprets as UTC; that's fine for display in strap.
+      const datePart = d.toLocaleDateString('nl-NL', { weekday: 'short', day: '2-digit', month: 'short' });
+      const hasTime = raw.includes('T');
+      const timePart = hasTime ? d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '';
+      return (datePart + (timePart ? ` ${timePart}` : '')).trim();
+    } catch (_e) {
+      return start || '—';
+    }
+  }
+
+  _downloadAgendaIcsFromEl(itemEl) {
+    const title = String(itemEl?.dataset?.headline || 'Agenda').trim();
+    const summary = String(itemEl?.dataset?.summary || '').trim();
+    const url = String(itemEl?.dataset?.url || '').trim();
+    const location = String(itemEl?.dataset?.location || '').trim();
+    const dateText = String(itemEl?.dataset?.eventDateText || '').trim();
+
+    const startLocal = String(itemEl?.dataset?.eventStartLocal || '').trim();
+    const endLocal = String(itemEl?.dataset?.eventEndLocal || '').trim();
+    const startDate = String(itemEl?.dataset?.eventStart || '').trim();
+    const endDate = String(itemEl?.dataset?.eventEnd || '').trim();
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const toIcsDate = (yyyyMmDd) => String(yyyyMmDd || '').replaceAll('-', '');
+    const nowStamp = (() => {
+      const d = new Date();
+      return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+    })();
+    const uid = `hue-ui-agenda-${Date.now()}-${Math.random().toString(16).slice(2)}@local`;
+
+    let dtStartLine = '';
+    let dtEndLine = '';
+
+    const addDays = (yyyyMmDd, days) => {
+      try {
+        const d = new Date(`${yyyyMmDd}T00:00:00`);
+        d.setDate(d.getDate() + days);
+        const y = d.getFullYear();
+        const m = pad(d.getMonth() + 1);
+        const dd = pad(d.getDate());
+        return `${y}-${m}-${dd}`;
+      } catch (_e) {
+        return yyyyMmDd;
+      }
+    };
+
+    if (startLocal) {
+      // Floating local time (no TZID): iOS uses device timezone.
+      const s = startLocal.replaceAll('-', '').replace(':', '').replace('T', 'T');
+      dtStartLine = `DTSTART:${s}00`;
+      let eLocal = endLocal || '';
+      if (!eLocal && startLocal) {
+        // Default duration 90 minutes if not known.
+        try {
+          const d = new Date(startLocal);
+          d.setMinutes(d.getMinutes() + 90);
+          const y = d.getFullYear();
+          const m = pad(d.getMonth() + 1);
+          const dd = pad(d.getDate());
+          const hh = pad(d.getHours());
+          const mm = pad(d.getMinutes());
+          eLocal = `${y}-${m}-${dd}T${hh}:${mm}`;
+        } catch (_e) { /* ignore */ }
+      }
+      if (eLocal) {
+        const e = eLocal.replaceAll('-', '').replace(':', '').replace('T', 'T');
+        dtEndLine = `DTEND:${e}00`;
+      }
+    } else if (startDate) {
+      const s = toIcsDate(startDate);
+      const e = toIcsDate(endDate || addDays(startDate, 1));
+      dtStartLine = `DTSTART;VALUE=DATE:${s}`;
+      dtEndLine = `DTEND;VALUE=DATE:${e}`;
+    } else {
+      // No parsable date: do not export.
+      return false;
+    }
+
+    const esc = (s) => String(s || '')
+      .replaceAll('\\', '\\\\')
+      .replaceAll('\n', '\\n')
+      .replaceAll(',', '\\,')
+      .replaceAll(';', '\\;');
+
+    const descParts = [];
+    if (summary) descParts.push(summary);
+    if (dateText) descParts.push(`Datum: ${dateText}`);
+    if (url) descParts.push(url);
+    const description = esc(descParts.filter(Boolean).join('\\n\\n'));
+
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Hue UI//Agenda//NL',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${nowStamp}`,
+      dtStartLine,
+      dtEndLine,
+      `SUMMARY:${esc(title)}`,
+      location ? `LOCATION:${esc(location)}` : null,
+      description ? `DESCRIPTION:${description}` : null,
+      url ? `URL:${esc(url)}` : null,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].filter(Boolean);
+
+    const icsText = lines.join('\\r\\n') + '\\r\\n';
+    const blob = new Blob([icsText], { type: 'text/calendar;charset=utf-8' });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = `${title.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) || 'agenda'}.ics`;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(href); } catch (_e) { /* ignore */ } }, 2000);
+    return true;
   }
 
   async _newsFetchCandidates({ signal } = {}) {
@@ -4013,6 +4210,15 @@ class HueRoomScreen extends HTMLElement {
         e.stopPropagation();
         hapticFeedback();
         void this._copyToClipboard(text);
+        return;
+      }
+      if (newsAction === 'add_calendar') {
+        const item = e.target.closest('.newsr-item[data-kind="agenda"]');
+        e.preventDefault();
+        e.stopPropagation();
+        hapticFeedback();
+        const ok = this._downloadAgendaIcsFromEl(item);
+        if (!ok) console.warn('[HueRoomScreen] Agenda item has no date, cannot export ICS.');
         return;
       }
     }
