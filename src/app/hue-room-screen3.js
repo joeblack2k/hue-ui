@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.77';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.77';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.77';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.77';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.77';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.77';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.77';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.77';
+} from './config-loader3.js?v=3.1.78';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.78';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.78';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.78';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.78';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.78';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.78';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.78';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.78';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.77';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.77';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.77';
+} from '../widgets/bitcoin.widget.js?v=3.1.78';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.78';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.78';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1376,7 +1376,6 @@ class HueRoomScreen extends HTMLElement {
   }
 
   connectedCallback() {
-    this._enterKioskMode();
     // Ensure listeners are present on reconnect (belt-and-suspenders)
     if (this._rendered) {
       this._attachEventListeners();
@@ -5739,7 +5738,6 @@ class HueRoomScreen extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._exitKioskMode();
     // Only tear down timers and camera feeds.
     // Event listeners are on the persistent shadowRoot — leave them intact
     // so they survive disconnect/reconnect cycles without reattachment.
@@ -5751,60 +5749,7 @@ class HueRoomScreen extends HTMLElement {
     this._closeLightControl();
   }
 
-  _enterKioskMode() {
-    if (this._kioskRestore) return;
-    this._kioskRestore = [];
-    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
-    for (const el of nodes) {
-      if (!el || !(el instanceof HTMLElement)) continue;
-      if (this.contains(el)) continue;
-      const prev = el.style.display;
-      this._kioskRestore.push([el, prev]);
-      el.style.setProperty('display', 'none', 'important');
-    }
-  }
-
-  _exitKioskMode() {
-    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
-    this._kioskRestore = null;
-    if (!restore) return;
-    for (const [el, prev] of restore) {
-      try {
-        if (!el || !(el instanceof HTMLElement)) continue;
-        if (prev) el.style.display = prev;
-        else el.style.removeProperty('display');
-      } catch (_e) { /* ignore */ }
-    }
-  }
-
-  _deepQueryAll(selectors) {
-    const sel = Array.isArray(selectors) ? selectors : [selectors];
-    const out = [];
-    const seen = new Set();
-    const stack = [document.documentElement];
-    while (stack.length) {
-      const root = stack.pop();
-      if (!root) continue;
-      try {
-        for (const s of sel) {
-          const list = root.querySelectorAll ? root.querySelectorAll(s) : [];
-          for (const el of list) {
-            if (!el) continue;
-            if (seen.has(el)) continue;
-            seen.add(el);
-            out.push(el);
-          }
-        }
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-        let n = walker.currentNode;
-        while (n) {
-          if (n.shadowRoot) stack.push(n.shadowRoot);
-          n = walker.nextNode();
-        }
-      } catch (_e) { /* ignore */ }
-    }
-    return out;
-  }
+  // Kiosk mode is handled globally by src/hue-ui.js (injects style into hui-root shadow root).
 
   static getStubConfig() {
     return { room: 'woonkamer' };

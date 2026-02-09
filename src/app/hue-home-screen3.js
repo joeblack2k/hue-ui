@@ -10,13 +10,13 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.77';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.77';
-import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.77';
-import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.77';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.77';
-import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.77';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.78';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.78';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.78';
+import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.78';
+import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.78';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.78';
+import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.78';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1595,7 +1595,6 @@ class HueHomeScreen extends HTMLElement {
   }
 
   connectedCallback() {
-    this._enterKioskMode();
     if (!this._locationListenerAttached) {
       window.addEventListener('location-changed', this._onLocationChanged);
       this._locationListenerAttached = true;
@@ -2160,7 +2159,6 @@ class HueHomeScreen extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._exitKioskMode();
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
@@ -2194,61 +2192,7 @@ class HueHomeScreen extends HTMLElement {
     }
   }
 
-  _enterKioskMode() {
-    if (this._kioskRestore) return;
-    this._kioskRestore = [];
-    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
-    for (const el of nodes) {
-      if (!el || !(el instanceof HTMLElement)) continue;
-      // Avoid hiding headers inside the card itself.
-      if (this.contains(el)) continue;
-      const prev = el.style.display;
-      this._kioskRestore.push([el, prev]);
-      el.style.setProperty('display', 'none', 'important');
-    }
-  }
-
-  _exitKioskMode() {
-    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
-    this._kioskRestore = null;
-    if (!restore) return;
-    for (const [el, prev] of restore) {
-      try {
-        if (!el || !(el instanceof HTMLElement)) continue;
-        if (prev) el.style.display = prev;
-        else el.style.removeProperty('display');
-      } catch (_e) { /* ignore */ }
-    }
-  }
-
-  _deepQueryAll(selectors) {
-    const sel = Array.isArray(selectors) ? selectors : [selectors];
-    const out = [];
-    const seen = new Set();
-    const stack = [document.documentElement];
-    while (stack.length) {
-      const root = stack.pop();
-      if (!root) continue;
-      try {
-        for (const s of sel) {
-          const list = root.querySelectorAll ? root.querySelectorAll(s) : [];
-          for (const el of list) {
-            if (!el) continue;
-            if (seen.has(el)) continue;
-            seen.add(el);
-            out.push(el);
-          }
-        }
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-        let n = walker.currentNode;
-        while (n) {
-          if (n.shadowRoot) stack.push(n.shadowRoot);
-          n = walker.nextNode();
-        }
-      } catch (_e) { /* ignore */ }
-    }
-    return out;
-  }
+  // Kiosk mode is handled globally by src/hue-ui.js (injects style into hui-root shadow root).
 
   // ===== Weather =====
 
