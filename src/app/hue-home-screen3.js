@@ -10,8 +10,8 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.51';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.77';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
 import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.51';
 import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.51';
 import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.75';
@@ -2195,30 +2195,77 @@ class HueHomeScreen extends HTMLElement {
   }
 
   _enterKioskMode() {
-    if (this._kioskRestore) return;
-    this._kioskRestore = [];
-    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
-    for (const el of nodes) {
-      if (!el || !(el instanceof HTMLElement)) continue;
-      // Avoid hiding headers inside the card itself.
-      if (this.contains(el)) continue;
-      const prev = el.style.display;
-      this._kioskRestore.push([el, prev]);
-      el.style.setProperty('display', 'none', 'important');
-    }
+    // Home Assistant re-renders its chrome (tabs/header) frequently. A one-shot hide
+    // can flash back in. We enforce kiosk-mode while this screen is connected.
+    if (this._kioskEnforcerActive) return;
+    this._kioskEnforcerActive = true;
+    this._kioskHidden = this._kioskHidden || new WeakMap();
+
+    const apply = () => {
+      const nodes = this._deepQueryAll([
+        'app-header',
+        'ha-tabs',
+        'ha-tab-bar',
+        'app-toolbar',
+        'ha-drawer',
+      ]);
+      for (const el of nodes) {
+        if (!el || !(el instanceof HTMLElement)) continue;
+        // Avoid hiding anything inside Hue-UI itself.
+        if (this.contains(el)) continue;
+        if (!this._kioskHidden.has(el)) {
+          this._kioskHidden.set(el, { display: el.style.display || '' });
+        }
+        el.style.setProperty('display', 'none', 'important');
+      }
+    };
+
+    // Apply immediately and then keep enforcing (mutation + interval) so it never comes back.
+    apply();
+    let rafScheduled = false;
+    const schedule = () => {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(() => {
+        rafScheduled = false;
+        apply();
+      });
+    };
+
+    try {
+      this._kioskObserver?.disconnect?.();
+    } catch (_e) { /* ignore */ }
+    this._kioskObserver = new MutationObserver(schedule);
+    try {
+      this._kioskObserver.observe(document.documentElement, { subtree: true, childList: true });
+    } catch (_e) { /* ignore */ }
+
+    try {
+      clearInterval(this._kioskInterval);
+    } catch (_e) { /* ignore */ }
+    this._kioskInterval = setInterval(apply, 1000);
   }
 
   _exitKioskMode() {
-    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
-    this._kioskRestore = null;
-    if (!restore) return;
-    for (const [el, prev] of restore) {
-      try {
+    this._kioskEnforcerActive = false;
+    try { this._kioskObserver?.disconnect?.(); } catch (_e) { /* ignore */ }
+    this._kioskObserver = null;
+    try { clearInterval(this._kioskInterval); } catch (_e) { /* ignore */ }
+    this._kioskInterval = null;
+
+    const hidden = this._kioskHidden;
+    if (!hidden) return;
+    // Best-effort restore. (Some nodes might no longer exist after HA re-renders.)
+    try {
+      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar', 'ha-drawer']);
+      for (const el of nodes) {
         if (!el || !(el instanceof HTMLElement)) continue;
-        if (prev) el.style.display = prev;
+        const prev = hidden.get(el);
+        if (!prev) continue;
+        if (prev.display) el.style.display = prev.display;
         else el.style.removeProperty('display');
-      } catch (_e) { /* ignore */ }
-    }
+      }
+    } catch (_e) { /* ignore */ }
   }
 
   _deepQueryAll(selectors) {
