@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.77';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
+} from './config-loader3.js?v=3.1.78';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.78';
 import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.51';
 import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.51';
 import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.51';
 import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.51';
 import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.51';
 import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.51';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.77';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.78';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -5969,7 +5969,6 @@ class HueRoomScreen extends HTMLElement {
         'ha-tabs',
         'ha-tab-bar',
         'app-toolbar',
-        'ha-drawer',
       ]);
       for (const el of nodes) {
         if (!el || !(el instanceof HTMLElement)) continue;
@@ -6010,7 +6009,7 @@ class HueRoomScreen extends HTMLElement {
     const hidden = this._kioskHidden;
     if (!hidden) return;
     try {
-      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar', 'ha-drawer']);
+      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
       for (const el of nodes) {
         if (!el || !(el instanceof HTMLElement)) continue;
         const prev = hidden.get(el);

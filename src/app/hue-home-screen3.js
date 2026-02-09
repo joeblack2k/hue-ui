@@ -10,8 +10,8 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.77';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.78';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.78';
 import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.51';
 import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.51';
 import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.75';
@@ -2207,7 +2207,6 @@ class HueHomeScreen extends HTMLElement {
         'ha-tabs',
         'ha-tab-bar',
         'app-toolbar',
-        'ha-drawer',
       ]);
       for (const el of nodes) {
         if (!el || !(el instanceof HTMLElement)) continue;
@@ -2257,7 +2256,7 @@ class HueHomeScreen extends HTMLElement {
     if (!hidden) return;
     // Best-effort restore. (Some nodes might no longer exist after HA re-renders.)
     try {
-      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar', 'ha-drawer']);
+      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
       for (const el of nodes) {
         if (!el || !(el instanceof HTMLElement)) continue;
         const prev = hidden.get(el);
