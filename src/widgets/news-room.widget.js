@@ -4,7 +4,7 @@
  * Room screen owns the fetching + Gemini generation. This file provides markup + CSS.
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.79';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.80';
 
 export const NEWS_ROOM_CSS = `
   .newsr-widget {

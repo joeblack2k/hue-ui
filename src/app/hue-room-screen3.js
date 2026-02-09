@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.79';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.79';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.79';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.79';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.79';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.79';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.79';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.79';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.79';
+} from './config-loader3.js?v=3.1.80';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.80';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.80';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.80';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.80';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.80';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.80';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.80';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.80';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.79';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.79';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.79';
+} from '../widgets/bitcoin.widget.js?v=3.1.80';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.80';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.80';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
