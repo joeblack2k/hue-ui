@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.81';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.81';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.81';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.81';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.81';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.81';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.81';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.81';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.81';
+} from './config-loader3.js?v=3.1.82';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.82';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.82';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.82';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.82';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.82';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.82';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.82';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.82';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.81';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.81';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.81';
+} from '../widgets/bitcoin.widget.js?v=3.1.82';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.82';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.82';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1897,7 +1897,7 @@ class HueRoomScreen extends HTMLElement {
           data-entity="${escapeHtml(lockEntity || '')}"
           data-service-domain="lock"
           data-service-name="open"
-          data-service-data="{}"
+          data-service-data="${escapeHtml(JSON.stringify(lockEntity ? { entity_id: lockEntity } : {}))}"
           ${lockEntity ? '' : 'disabled'}
           aria-label="Open deur">
           <ha-icon icon="mdi:door-open"></ha-icon>
@@ -5721,6 +5721,13 @@ class HueRoomScreen extends HTMLElement {
     if (!cameraEntityId) return;
     const img = this.shadowRoot?.querySelector(`.hue-camera-feed[data-entity="${CSS.escape(cameraEntityId)}"]`);
     if (!img) return;
+
+    // If snapshot polling is active, stop it so "Live" actually sticks.
+    const pollId = this._cameraRefreshIntervals.get(img);
+    if (pollId) {
+      clearInterval(pollId);
+      this._cameraRefreshIntervals.delete(img);
+    }
 
     // Restart the MJPEG connection. Adding a cache buster ensures the browser opens a new request.
     const liveSrc = img.dataset.liveSrc || '';

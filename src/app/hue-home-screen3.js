@@ -10,13 +10,13 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.81';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.81';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.81';
-import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.81';
-import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.81';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.81';
-import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.81';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.82';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.82';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.82';
+import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.82';
+import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.82';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.82';
+import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.82';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
