@@ -17,6 +17,8 @@ const _fmtCache = new Map();
 function currencyFormatter(currency, maximumFractionDigits = 0) {
   const key = `${String(currency || '').toUpperCase()}|${maximumFractionDigits}`;
   if (_fmtCache.has(key)) return _fmtCache.get(key);
+  // Defensive cap: key space is normally tiny, but keep it bounded.
+  if (_fmtCache.size > 50) _fmtCache.clear();
   const fmt = new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency: String(currency || 'USD').toUpperCase(),

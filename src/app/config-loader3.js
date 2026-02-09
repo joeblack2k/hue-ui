@@ -93,6 +93,22 @@ export function getRoomsIndexOverride() {
       storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
       return null;
     }
+    // Guardrail: if the override looks like the public example config, ignore it.
+    // This prevents getting stuck on placeholders (e.g. "Example Device") on iOS/Safari.
+    const people = Array.isArray(parsed.people) ? parsed.people.map(String) : [];
+    const devices = Array.isArray(parsed.devices) ? parsed.devices : [];
+    const deviceNames = devices.map((d) => String(d?.name || '')).filter(Boolean);
+    const deviceEntities = devices.map((d) => String(d?.entity || '')).filter(Boolean);
+    const looksLikeExample =
+      deviceNames.some((n) => n.toLowerCase().includes('example device')) ||
+      deviceEntities.some((e) => e === 'switch.example') ||
+      people.some((p) => p === 'person.example') ||
+      String(parsed.weather_location || '').toLowerCase().includes('your city');
+    if (looksLikeExample) {
+      console.warn('[Config Loader] Rooms index override looks like example config, clearing.');
+      storage.removeItem(ROOMS_INDEX_OVERRIDE_KEY);
+      return null;
+    }
     return parsed;
   } catch (error) {
     console.warn('[Config Loader] Failed to parse rooms index override, clearing:', error);

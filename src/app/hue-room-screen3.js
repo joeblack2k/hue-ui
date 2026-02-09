@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.51';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.51';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.51';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.51';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.51';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.51';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.51';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.51';
+} from './config-loader3.js?v=3.1.77';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.77';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.77';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.77';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.77';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.77';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.77';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.77';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.57';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.67';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.75';
+} from '../widgets/bitcoin.widget.js?v=3.1.77';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.77';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.77';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1320,6 +1320,7 @@ class HueRoomScreen extends HTMLElement {
     this._bitcoinAbortController = null;
     this._bitcoinTypingTimer = null;
     this._bitcoinLivePriceTimer = null;
+    this._bitcoinChartTimer = null;
     this._bitcoinReportStarted = false;
 
     // Weather room widget (banner + Gemini report)
@@ -1387,6 +1388,15 @@ class HueRoomScreen extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+
+    // During HA reconnects the setter can receive null; tear down timers/feeds so we don't leak intervals.
+    if (!this._hass) {
+      this._teardownCameraFeeds();
+      this._cancelBitcoinJobs({ resetReport: true });
+      this._cancelWeatherJobs({ resetReport: true });
+      this._cancelNewsJobs({ resetReport: true });
+      return;
+    }
 
     if (!this._roomsIndex || !this._roomConfig) {
       this._loadAndRender();
@@ -1822,6 +1832,10 @@ class HueRoomScreen extends HTMLElement {
       clearInterval(this._bitcoinLivePriceTimer);
       this._bitcoinLivePriceTimer = null;
     }
+    if (this._bitcoinChartTimer) {
+      clearInterval(this._bitcoinChartTimer);
+      this._bitcoinChartTimer = null;
+    }
     if (resetReport) {
       this._bitcoinReportStarted = false;
     }
@@ -1843,6 +1857,17 @@ class HueRoomScreen extends HTMLElement {
       void this._refreshBitcoinPriceOnly(widget, vs);
     }
 
+    // Keep the 12h chart + low/high fresh (but don't spam CoinGecko).
+    if (!this._bitcoinChartTimer) {
+      const vs = String(widget.dataset.vs || 'usd').toLowerCase();
+      const hours = Number(widget.dataset.hours || 12);
+      const safeHours = Number.isFinite(hours) ? Math.max(1, Math.min(24, Math.round(hours))) : 12;
+      this._bitcoinChartTimer = setInterval(() => {
+        void this._refreshBitcoinChartAndStats(widget, vs, safeHours);
+      }, 5 * 60 * 1000);
+      void this._refreshBitcoinChartAndStats(widget, vs, safeHours);
+    }
+
     // Reports are prefetched in the background by Home Assistant automations and stored in /local/hue-ui/data/.
     // We render instantly (no typing animation) and never call Gemini from the browser.
     if (this._bitcoinReportStarted) return;
@@ -1852,6 +1877,23 @@ class HueRoomScreen extends HTMLElement {
     const runId = ++this._bitcoinRunId;
     widget.dataset.btcSlot = slot;
     void this._loadBitcoinPrefetch(widget, runId, { reason, slot });
+  }
+
+  async _refreshBitcoinChartAndStats(widget, vs, safeHours) {
+    if (!widget || !this.shadowRoot?.contains(widget)) return;
+    try {
+      const [priceState, chart] = await Promise.all([
+        fetchBtcPrice({ vsCurrency: vs }),
+        fetchBtcMarketChart({ vsCurrency: vs, days: 1 }),
+      ]);
+      const sliced = slicePricesLastHours(chart?.prices || [], safeHours, Date.now());
+      const stats = computePriceStats(sliced);
+      const currency = (priceState?.currency || vs.toUpperCase()).toUpperCase();
+      this._updateBitcoinWidgetUi(widget, { priceState, sliced, stats, currency });
+    } catch (e) {
+      // Soft-fail; keep prior chart if present.
+      console.warn('[HueRoomScreen] Bitcoin chart refresh failed:', e);
+    }
   }
 
   async _loadBitcoinPrefetch(widget, runId, { reason = '', slot = 'am' } = {}) {
@@ -4384,10 +4426,10 @@ class HueRoomScreen extends HTMLElement {
   }
 
   _openLightControl(entityId) {
-    if (!entityId || !this._hass?.states?.[entityId]) return;
+    const state = entityId ? this._hass?.states?.[entityId] : null;
+    if (!state) return;
     this._lightControlEntity = entityId;
 
-    const state = this._hass.states[entityId];
     const colorMode = String(state?.attributes?.color_mode || '').toLowerCase();
     this._lightControlUseColor = colorMode === 'hs' || colorMode === 'xy' || !!state?.attributes?.hs_color;
     this._lightControlUseTemp = colorMode === 'color_temp' || Number.isFinite(Number(state?.attributes?.color_temp));
@@ -4994,11 +5036,12 @@ class HueRoomScreen extends HTMLElement {
   }
 
   _scanHassStatesForRoom(domains) {
-    if (!this._hass?.states || !Array.isArray(domains) || !domains.length) return [];
+    const states = this._hass?.states;
+    if (!states || !Array.isArray(domains) || !domains.length) return [];
     const roomMatches = this._getRoomMatcher();
     const options = [];
 
-    Object.entries(this._hass.states).forEach(([entityId, state]) => {
+    Object.entries(states).forEach(([entityId, state]) => {
       const domain = entityId.split('.')[0];
       if (!domains.includes(domain)) return;
 

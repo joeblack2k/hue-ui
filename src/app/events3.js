@@ -342,17 +342,36 @@ function setHueCardsInteractionDisabled(disabled) {
 }
 
 function isAnyDialogOpen() {
-  return !!findNodeDeep(document.documentElement, (node) => {
-    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-    const tag = String(node.tagName || '').toLowerCase();
-    if ((tag.includes('dialog') || tag.includes('sheet')) && (node.hasAttribute('open') || node.getAttribute('aria-hidden') === 'false')) {
-      return true;
-    }
-    if (node.classList?.contains('mdc-dialog') && node.classList.contains('mdc-dialog--open')) {
-      return true;
-    }
+  // Fast-path: avoid expensive full DOM traversal every 250ms.
+  // Home Assistant dialogs live in a small number of known shadow roots.
+  const ha = document.querySelector('home-assistant');
+  const roots = [];
+  if (ha?.shadowRoot) roots.push(ha.shadowRoot);
+  const main = ha?.shadowRoot?.querySelector('home-assistant-main');
+  if (main?.shadowRoot) roots.push(main.shadowRoot);
+
+  const isOpenDialogEl = (el) => {
+    if (!el) return false;
+    if (el.hasAttribute?.('open')) return true;
+    if (el.getAttribute?.('aria-hidden') === 'false') return true;
+    // Some HA dialogs use MDC classes.
+    if (el.classList?.contains('mdc-dialog') && el.classList.contains('mdc-dialog--open')) return true;
+    if (el.classList?.contains('mdc-dialog--open')) return true;
     return false;
-  });
+  };
+
+  for (const root of roots) {
+    try {
+      // ha-more-info-dialog is the most common; ha-dialog covers other overlays.
+      const dlg = root.querySelector?.('ha-more-info-dialog, ha-dialog, ha-overlay-dialog, ha-paper-dialog, ha-more-info-dialog, dialog');
+      if (isOpenDialogEl(dlg)) return true;
+      // MDC open marker (if rendered in this shadow root)
+      if (root.querySelector?.('.mdc-dialog--open')) return true;
+    } catch (_e) {
+      // ignore
+    }
+  }
+  return false;
 }
 
 function findNodeDeep(root, matcher) {

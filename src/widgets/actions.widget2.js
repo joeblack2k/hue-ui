@@ -47,15 +47,21 @@ function renderActionTile(hass, action = {}) {
   const svcDomain = hasService ? String(action.service.domain || '').trim() : '';
   const svcName = hasService ? String(action.service.service || '').trim() : '';
   const svcData = hasService ? (action.service.data ?? {}) : null;
-  const svcDataJson = hasService ? escapeHtml(JSON.stringify(svcData || {})) : '';
+  let svcDataJson = '';
+  if (hasService) {
+    try { svcDataJson = escapeHtml(JSON.stringify(svcData || {})); }
+    catch (_e) { svcDataJson = '{}'; }
+  }
   const svcAttrs = hasService
     ? `data-service-domain="${escapeHtml(svcDomain)}" data-service-name="${escapeHtml(svcName)}" data-service-data="${svcDataJson}"`
     : '';
 
   const actionData = (action.data && typeof action.data === 'object') ? action.data : null;
-  const actionDataAttr = actionData
-    ? `data-action-data="${escapeHtml(JSON.stringify(actionData))}"`
-    : '';
+  let actionDataAttr = '';
+  if (actionData) {
+    try { actionDataAttr = `data-action-data="${escapeHtml(JSON.stringify(actionData))}"`; }
+    catch (_e) { actionDataAttr = `data-action-data="{}"`; }
+  }
 
   return `
     <button class="hue-tile hue-action-tile ${wideClass} ${available ? '' : 'is-disabled'}"

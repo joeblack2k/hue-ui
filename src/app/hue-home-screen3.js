@@ -10,13 +10,13 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.51';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.51';
-import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.51';
-import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.75';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.51';
-import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.75';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.77';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.77';
+import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.77';
+import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.77';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.77';
+import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.77';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -3206,7 +3206,9 @@ class HueHomeScreen extends HTMLElement {
         const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
         const next = targetPath.startsWith('/') ? targetPath : `${dashboardPath}/${targetPath}`;
         window.history.pushState(null, '', next);
-        fireLocationChanged();
+        // fireLocationChanged is scoped to _attachEventListeners(); use the global route event here.
+        window.dispatchEvent(new Event('location-changed'));
+        setTimeout(() => window.dispatchEvent(new Event('location-changed')), 0);
       }
     }
 
