@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.77';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.77';
+} from './config-loader3.js?v=3.1.51';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
 import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.51';
 import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.51';
 import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.51';
 import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.51';
 import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.51';
 import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.51';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.77';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.51';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,7 +34,7 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.75';
+} from '../widgets/bitcoin.widget.js?v=3.1.57';
 import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.67';
 import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.75';
 
@@ -586,21 +586,6 @@ const STYLES = `
     min-height: 92px;
   }
 
-  .hue-action-tile.is-talking {
-    border: 1px solid rgba(61, 220, 112, 0.35);
-    box-shadow: 0 0 0 2px rgba(61, 220, 112, 0.14), var(--hue-shadow-card);
-  }
-
-  .hue-action-tile.is-talking .hue-tile-icon {
-    animation: hueTalkPulse 1.2s ease-in-out infinite;
-  }
-
-  @keyframes hueTalkPulse {
-    0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(61, 220, 112, 0)); }
-    50% { transform: scale(1.06); filter: drop-shadow(0 0 10px rgba(61, 220, 112, 0.35)); }
-    100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(61, 220, 112, 0)); }
-  }
-
   .hue-action-tile .hue-tile-footer {
     justify-content: flex-start;
   }
@@ -608,20 +593,6 @@ const STYLES = `
   .hue-action-tile.is-disabled {
     opacity: 0.55;
     cursor: not-allowed;
-  }
-
-  /* ===== WEBRTC CAMERA ===== */
-  .hue-webrtc-host {
-    width: 100%;
-    border-radius: 18px;
-    overflow: hidden;
-    background: rgba(0,0,0,0.25);
-    box-shadow: var(--hue-shadow-card);
-  }
-
-  .hue-webrtc-host > * {
-    display: block;
-    width: 100%;
   }
 
   .hue-action-pill {
@@ -1569,7 +1540,6 @@ class HueRoomScreen extends HTMLElement {
 
     this._attachEventListeners();
     this._wireCameraFeeds();
-    void this._wireWebRtcCards();
     this._applyWidgetOverridesToDom();
     this._rendered = true;
     this._updateStates();
@@ -1610,9 +1580,6 @@ class HueRoomScreen extends HTMLElement {
           break;
         case 'camera':
           blocks.push(this._renderCameraSection(section));
-          break;
-        case 'webrtc':
-          blocks.push(this._renderWebRtcSection(section));
           break;
         case 'devices':
           blocks.push(this._renderDevicesSection(section));
@@ -1810,29 +1777,6 @@ class HueRoomScreen extends HTMLElement {
     `;
   }
 
-  _renderWebRtcSection(section) {
-    const entityId = section.entity || section.camera_entity || section.camera;
-    if (!entityId) return '';
-    const title = section.title || 'LIVE';
-    const cardId = section.card_id || entityId;
-    const wantTalk = section.two_way_audio === true || section.talk === true;
-    const allowMic = wantTalk === true; // mic only when talk-toggle enables it
-
-    // We mount the actual webrtc-camera card after render (needs card helpers + hass).
-    return `
-      <div class="hue-section">
-        <div class="hue-section-header">
-          <span class="hue-section-title">${escapeHtml(t(title.toUpperCase(), title.toUpperCase()))}</span>
-        </div>
-        <div class="hue-webrtc-host"
-             data-webrtc="true"
-             data-card-id="${escapeHtml(cardId)}"
-             data-entity="${escapeHtml(entityId)}"
-             data-allow-mic="${allowMic ? 'true' : 'false'}"></div>
-      </div>
-    `;
-  }
-
   _renderActionsSection(section) {
     const content = renderActionsContent(this._hass, section);
     if (!content) return '';
@@ -1932,17 +1876,6 @@ class HueRoomScreen extends HTMLElement {
         statusEl.textContent = `Samenvatting (${slot === 'pm' ? 'middag' : 'ochtend'}) • bijgewerkt ${when}`;
       }
       if (reportEl) reportEl.textContent = this._normalizeBitcoinReportText(text || '') || 'Nog geen Bitcoin-rapport beschikbaar.';
-
-      // If the prefetch includes chart points/stats, render them immediately (no CoinGecko call required).
-      const points = Array.isArray(data?.points) ? data.points : (Array.isArray(data?.prices_12h) ? data.prices_12h : null);
-      const vs = String(widget?.dataset?.vs || 'usd').toLowerCase();
-      const currency = String(data?.currency || data?.vs || vs || 'USD').toUpperCase();
-      if (Array.isArray(points) && points.length >= 2) {
-        this._updateBitcoinChartFromPoints(widget, points, { currency, updatedAt: Number.isFinite(ts) ? ts : Date.now() });
-      } else {
-        // Fallback: fetch chart data once (no Gemini) if prefetch doesn't include points yet.
-        void this._refreshBitcoinChartOnce(widget, runId, { vs, hours: 12, updatedAt: Number.isFinite(ts) ? ts : Date.now() });
-      }
     } catch (e) {
       if (runId !== this._bitcoinRunId) return;
       if (statusEl) statusEl.textContent = 'Geen prefetched rapport gevonden.';
@@ -1951,39 +1884,6 @@ class HueRoomScreen extends HTMLElement {
     } finally {
       if (loadingEl) loadingEl.classList.remove('is-visible');
       if (caretEl) caretEl.style.display = 'none';
-    }
-  }
-
-  _updateBitcoinChartFromPoints(widget, points, { currency = 'USD', updatedAt = null } = {}) {
-    if (!widget) return;
-    const sliced = Array.isArray(points) ? points : [];
-    const stats = computePriceStats(sliced);
-    const price = Number.isFinite(stats?.end) ? stats.end : null;
-    const priceState = {
-      price,
-      currency,
-      updatedAt: Number.isFinite(Number(updatedAt)) ? Number(updatedAt) : (stats?.endTs || Date.now()),
-    };
-    this._updateBitcoinWidgetUi(widget, { priceState, sliced, stats, currency });
-  }
-
-  async _refreshBitcoinChartOnce(widget, runId, { vs = 'usd', hours = 12, updatedAt = null } = {}) {
-    if (!widget || !this.shadowRoot?.contains(widget)) return;
-    try {
-      const chart = await fetchBtcMarketChart({ vsCurrency: vs, days: 1 });
-      if (runId !== this._bitcoinRunId) return;
-      const sliced = slicePricesLastHours(chart?.prices || [], hours, Date.now());
-      const stats = computePriceStats(sliced);
-      const currency = String(vs || 'USD').toUpperCase();
-      const priceState = {
-        price: Number.isFinite(stats?.end) ? stats.end : null,
-        currency,
-        updatedAt: Number.isFinite(Number(updatedAt)) ? Number(updatedAt) : (stats?.endTs || Date.now()),
-      };
-      this._updateBitcoinWidgetUi(widget, { priceState, sliced, stats, currency });
-    } catch (e) {
-      // Soft-fail; the report still shows.
-      console.warn('[HueRoomScreen] BTC chart fetch failed:', e);
     }
   }
 
@@ -2559,8 +2459,7 @@ class HueRoomScreen extends HTMLElement {
       if (statusEl) statusEl.textContent = `Weerbericht (${slot === 'midday' ? 'middag' : 'ochtend'}) • bijgewerkt ${when}`;
 
       if (reportEl) reportEl.textContent = this._normalizeBitcoinReportText(text || '') || 'Nog geen weerbericht beschikbaar.';
-      // Prefer the prefetched current/window data so the banner reflects reality even if the HA weather entity is missing.
-      this._updateWeatherBanner(widget, data);
+      this._updateWeatherForecastStrip(widget);
     } catch (e) {
       if (runId !== this._weatherRunId) return;
       if (statusEl) statusEl.textContent = 'Geen prefetched weerbericht gevonden.';
@@ -3621,26 +3520,7 @@ class HueRoomScreen extends HTMLElement {
     return `${Math.round(w)}${u ? ` ${u}` : ''}`.trim();
   }
 
-  _openMeteoCodeToCondition(code) {
-    const c = Number(code);
-    if (!Number.isFinite(c)) return '';
-    // Open-Meteo weather codes: https://open-meteo.com/en/docs
-    if (c === 0) return 'sunny';
-    if (c === 1) return 'partlycloudy';
-    if (c === 2 || c === 3) return 'cloudy';
-    if (c === 45 || c === 48) return 'fog';
-    if (c === 51 || c === 53 || c === 55) return 'rainy';
-    if (c === 56 || c === 57) return 'rainy';
-    if (c === 61 || c === 63 || c === 65) return 'rainy';
-    if (c === 66 || c === 67) return 'rainy';
-    if (c === 71 || c === 73 || c === 75 || c === 77) return 'snowy';
-    if (c === 80 || c === 81 || c === 82) return 'pouring';
-    if (c === 85 || c === 86) return 'snowy-rainy';
-    if (c === 95 || c === 96 || c === 99) return 'lightning-rainy';
-    return 'cloudy';
-  }
-
-  _updateWeatherBanner(widget, prefetch = null) {
+  _updateWeatherBanner(widget) {
     const weather = this._getWeatherState();
     const location = String(this._roomsIndex?.weather_location || 'Leidschendam').trim() || 'Leidschendam';
     const emojiEl = widget.querySelector('[data-role="wx-emoji"]');
@@ -3651,22 +3531,6 @@ class HueRoomScreen extends HTMLElement {
     const windEl = widget.querySelector('[data-role="wx-wind"]');
 
     if (locEl) locEl.textContent = location;
-
-    // Prefetched Open-Meteo data (server-side) takes precedence when available.
-    const current = prefetch && typeof prefetch === 'object' ? prefetch.current : null;
-    if (current && (current.temperature_c != null || current.windspeed_kmh != null)) {
-      const temp = Number(current.temperature_c);
-      const wind = Number(current.windspeed_kmh);
-      const pprob = Number(current.precip_probability_pct);
-      const cond = this._openMeteoCodeToCondition(current.weathercode);
-      if (emojiEl) emojiEl.textContent = getWeatherEmoji(cond || 'cloudy');
-      if (tempEl) tempEl.textContent = Number.isFinite(temp) ? `${Math.round(temp)}°` : '--°';
-      if (condEl) condEl.textContent = translateCondition(cond || 'cloudy');
-      if (rainEl) rainEl.textContent = `Regen: ${Number.isFinite(pprob) ? Math.round(pprob) : '--'}%`;
-      if (windEl) windEl.textContent = `Wind: ${Number.isFinite(wind) ? `${Math.round(wind)} km/u` : '--'}`;
-      this._updateWeatherForecastStrip(widget, prefetch);
-      return;
-    }
 
     if (!weather) {
       if (emojiEl) emojiEl.textContent = '⛅';
@@ -3690,11 +3554,16 @@ class HueRoomScreen extends HTMLElement {
     this._updateWeatherForecastStrip(widget);
   }
 
-  _updateWeatherForecastStrip(widget, prefetch = null) {
+  _updateWeatherForecastStrip(widget) {
     if (!widget) return;
     const strip = widget.querySelector('[data-role="wx-forecast"]');
     if (!strip) return;
-    const preWindow = prefetch && typeof prefetch === 'object' && Array.isArray(prefetch.window) ? prefetch.window : null;
+    const weather = this._getWeatherState();
+    const forecast = Array.isArray(weather?.attributes?.forecast) ? weather.attributes.forecast : [];
+    if (!forecast.length) {
+      strip.innerHTML = '';
+      return;
+    }
 
     const mins = this._minutesSinceLocalMidnight();
     const slot = mins >= (12 * 60) ? 'midday' : 'morning';
@@ -3702,44 +3571,20 @@ class HueRoomScreen extends HTMLElement {
     const endHour = slot === 'midday' ? 19 : 13;
 
     const rows = [];
-    if (preWindow && preWindow.length) {
-      for (const f of preWindow) {
-        const dt = f?.time || '';
-        const t = Date.parse(String(dt));
-        if (!Number.isFinite(t)) continue;
-        const d = new Date(t);
-        const h = d.getHours();
-        if (h < startHour || h > endHour) continue;
-        rows.push({
-          time: d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-          cond: this._openMeteoCodeToCondition(f?.code),
-          temp: Number.isFinite(Number(f?.temp)) ? Math.round(Number(f.temp)) : null,
-          precip: Number.isFinite(Number(f?.pprob)) ? Number(f.pprob) : null,
-        });
-        if (rows.length >= 10) break;
-      }
-    } else {
-      const weather = this._getWeatherState();
-      const forecast = Array.isArray(weather?.attributes?.forecast) ? weather.attributes.forecast : [];
-      if (!forecast.length) {
-        strip.innerHTML = '';
-        return;
-      }
-      for (const f of forecast) {
-        const dt = f?.datetime || f?.time || '';
-        const t = Date.parse(String(dt));
-        if (!Number.isFinite(t)) continue;
-        const d = new Date(t);
-        const h = d.getHours();
-        if (h < startHour || h > endHour) continue;
-        rows.push({
-          time: d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-          cond: String(f?.condition || '').trim(),
-          temp: Number.isFinite(Number(f?.temperature)) ? Math.round(Number(f.temperature)) : null,
-          precip: Number.isFinite(Number(f?.precipitation)) ? Number(f.precipitation) : null,
-        });
-        if (rows.length >= 10) break;
-      }
+    for (const f of forecast) {
+      const dt = f?.datetime || f?.time || '';
+      const t = Date.parse(String(dt));
+      if (!Number.isFinite(t)) continue;
+      const d = new Date(t);
+      const h = d.getHours();
+      if (h < startHour || h > endHour) continue;
+      rows.push({
+        time: d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+        cond: String(f?.condition || '').trim(),
+        temp: Number.isFinite(Number(f?.temperature)) ? Math.round(Number(f.temperature)) : null,
+        precip: Number.isFinite(Number(f?.precipitation)) ? Number(f.precipitation) : null,
+      });
+      if (rows.length >= 10) break;
     }
 
     if (!rows.length) {
@@ -4234,12 +4079,6 @@ class HueRoomScreen extends HTMLElement {
         if (entity) handleAction(this._hass, 'press', entity);
         break;
 
-      case 'toggle_talk':
-        e.preventDefault();
-        e.stopPropagation();
-        this._toggleTalkMode(target);
-        break;
-
       case 'tts_say': {
         let opts = {};
         if (actionDataRaw) {
@@ -4276,22 +4115,6 @@ class HueRoomScreen extends HTMLElement {
         if (entity) handleAction(this._hass, 'more_info', entity);
         break;
     }
-  }
-
-  _toggleTalkMode(buttonEl) {
-    this._talkingActive = !this._talkingActive;
-    const active = this._talkingActive;
-
-    if (buttonEl) {
-      buttonEl.classList.toggle('is-talking', active);
-      const subtitle = buttonEl.querySelector('.hue-tile-subtitle');
-      if (subtitle) subtitle.textContent = active ? 'Talking… tap to stop' : 'Tap to talk';
-      const pill = buttonEl.querySelector('.hue-action-pill');
-      if (pill) pill.textContent = active ? 'LIVE' : 'Talk';
-    }
-
-    // Re-mount WebRTC cards so they switch between `media: video,audio` and `video,audio,microphone`.
-    void this._wireWebRtcCards();
   }
 
   _queueLightControlTimer(kind, fn) {
@@ -5446,9 +5269,6 @@ class HueRoomScreen extends HTMLElement {
 
     // Optional: on doorbell/attention triggers, force the primary camera feed to reload.
     this._maybeKickAttentionCamera();
-
-    // Keep embedded WebRTC cards wired with current hass + talk mode.
-    void this._wireWebRtcCards();
   }
 
   _maybeKickAttentionCamera() {
@@ -5512,74 +5332,6 @@ class HueRoomScreen extends HTMLElement {
       // Try live MJPEG stream first
       this._switchCameraToLive(img, refreshMs);
     });
-  }
-
-  async _wireWebRtcCards() {
-    const hosts = Array.from(this.shadowRoot?.querySelectorAll('.hue-webrtc-host[data-webrtc="true"]') || []);
-    if (hosts.length === 0) return;
-    if (!this._hass) return;
-
-    // WebRTC Camera card (AlexxIT) is loaded via HA dashboard resources.
-    // If it's not installed, fall back to the existing MJPEG camera section(s).
-    if (!customElements.get('webrtc-camera')) {
-      console.warn('[HueRoomScreen] webrtc-camera element not found; cannot mount WebRTC cards.');
-      return;
-    }
-
-    if (!this._webrtcCards) this._webrtcCards = new Map();
-    if (!this._webrtcHelpersPromise) {
-      this._webrtcHelpersPromise = (typeof window.loadCardHelpers === 'function')
-        ? window.loadCardHelpers()
-        : Promise.resolve(null);
-    }
-    const helpers = await this._webrtcHelpersPromise;
-    if (!helpers?.createCardElement) {
-      console.warn('[HueRoomScreen] Card helpers not available; cannot mount WebRTC cards.');
-      return;
-    }
-
-    for (const host of hosts) {
-      const entityId = host.dataset.entity;
-      const cardId = host.dataset.cardId || entityId;
-      if (!entityId || !cardId) continue;
-
-      const allowMic = host.dataset.allowMic === 'true';
-      const micOn = !!(allowMic && this._talkingActive);
-
-      const cfg = {
-        type: 'custom:webrtc-camera',
-        entity: entityId,
-        // Keep UI off; we provide our own big Talk button. The video should start instantly.
-        ui: false,
-        // Force WebRTC for lowest latency + to support 2-way audio (microphone).
-        mode: 'webrtc',
-        // Let the card handle best provider (go2rtc/web_rtc).
-        muted: false,
-        media: micOn ? 'video,audio,microphone' : 'video,audio',
-      };
-
-      const prev = this._webrtcCards.get(cardId);
-      if (prev?.host === host && prev?.config?.media === cfg.media) {
-        if (prev.el) prev.el.hass = this._hass;
-        continue;
-      }
-
-      host.innerHTML = '';
-      const el = await helpers.createCardElement(cfg);
-      el.hass = this._hass;
-      host.appendChild(el);
-      this._webrtcCards.set(cardId, { host, el, config: cfg });
-    }
-  }
-
-  _teardownWebRtcCards() {
-    if (!this._webrtcCards) return;
-    for (const { host } of this._webrtcCards.values()) {
-      try {
-        if (host) host.innerHTML = '';
-      } catch (_e) { /* ignore */ }
-    }
-    this._webrtcCards.clear();
   }
 
   _switchCameraToLive(img, refreshMs) {
@@ -5949,7 +5701,6 @@ class HueRoomScreen extends HTMLElement {
     // Event listeners are on the persistent shadowRoot — leave them intact
     // so they survive disconnect/reconnect cycles without reattachment.
     this._teardownCameraFeeds();
-    this._teardownWebRtcCards();
     this._cancelBitcoinJobs({ resetReport: true });
     this._cancelWeatherJobs({ resetReport: true });
     this._cancelNewsJobs({ resetReport: true });
@@ -5958,67 +5709,29 @@ class HueRoomScreen extends HTMLElement {
   }
 
   _enterKioskMode() {
-    // HA chrome can re-appear after navigation/renders; enforce kiosk mode continuously.
-    if (this._kioskEnforcerActive) return;
-    this._kioskEnforcerActive = true;
-    this._kioskHidden = this._kioskHidden || new WeakMap();
-
-    const apply = () => {
-      const nodes = this._deepQueryAll([
-        'app-header',
-        'ha-tabs',
-        'ha-tab-bar',
-        'app-toolbar',
-        'ha-drawer',
-      ]);
-      for (const el of nodes) {
-        if (!el || !(el instanceof HTMLElement)) continue;
-        if (this.contains(el)) continue;
-        if (!this._kioskHidden.has(el)) {
-          this._kioskHidden.set(el, { display: el.style.display || '' });
-        }
-        el.style.setProperty('display', 'none', 'important');
-      }
-    };
-
-    apply();
-    let rafScheduled = false;
-    const schedule = () => {
-      if (rafScheduled) return;
-      rafScheduled = true;
-      requestAnimationFrame(() => {
-        rafScheduled = false;
-        apply();
-      });
-    };
-
-    try { this._kioskObserver?.disconnect?.(); } catch (_e) { /* ignore */ }
-    this._kioskObserver = new MutationObserver(schedule);
-    try { this._kioskObserver.observe(document.documentElement, { subtree: true, childList: true }); } catch (_e) { /* ignore */ }
-
-    try { clearInterval(this._kioskInterval); } catch (_e) { /* ignore */ }
-    this._kioskInterval = setInterval(apply, 1000);
+    if (this._kioskRestore) return;
+    this._kioskRestore = [];
+    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
+    for (const el of nodes) {
+      if (!el || !(el instanceof HTMLElement)) continue;
+      if (this.contains(el)) continue;
+      const prev = el.style.display;
+      this._kioskRestore.push([el, prev]);
+      el.style.setProperty('display', 'none', 'important');
+    }
   }
 
   _exitKioskMode() {
-    this._kioskEnforcerActive = false;
-    try { this._kioskObserver?.disconnect?.(); } catch (_e) { /* ignore */ }
-    this._kioskObserver = null;
-    try { clearInterval(this._kioskInterval); } catch (_e) { /* ignore */ }
-    this._kioskInterval = null;
-
-    const hidden = this._kioskHidden;
-    if (!hidden) return;
-    try {
-      const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar', 'ha-drawer']);
-      for (const el of nodes) {
+    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
+    this._kioskRestore = null;
+    if (!restore) return;
+    for (const [el, prev] of restore) {
+      try {
         if (!el || !(el instanceof HTMLElement)) continue;
-        const prev = hidden.get(el);
-        if (!prev) continue;
-        if (prev.display) el.style.display = prev.display;
+        if (prev) el.style.display = prev;
         else el.style.removeProperty('display');
-      }
-    } catch (_e) { /* ignore */ }
+      } catch (_e) { /* ignore */ }
+    }
   }
 
   _deepQueryAll(selectors) {

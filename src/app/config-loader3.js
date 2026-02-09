@@ -15,18 +15,7 @@ const ROOMS_INDEX_OVERRIDE_KEY = 'hue-ui-rooms-index-override';
  */
 export async function loadRoomsIndex() {
   const override = getRoomsIndexOverride();
-  // If a browser has a localStorage override, keep using it as the base,
-  // but merge in any new rooms/devices from the local config file so we can
-  // ship incremental additions (like a new Voordeur tile) without wiping
-  // the user's personalized layout.
-  if (override) {
-    try {
-      const local = await fetchWithCache(ROOMS_INDEX_LOCAL_URL);
-      return mergeRoomsIndex(override, local);
-    } catch (_e) {
-      return override;
-    }
-  }
+  if (override) return override;
   try {
     // Prefer local (non-versioned) config if present.
     return await fetchWithCache(ROOMS_INDEX_LOCAL_URL);
@@ -37,22 +26,6 @@ export async function loadRoomsIndex() {
     }
     throw error;
   }
-}
-
-function mergeRoomsIndex(base, patch) {
-  const out = { ...(patch && typeof patch === 'object' ? patch : {}), ...(base && typeof base === 'object' ? base : {}) };
-
-  const baseRooms = Array.isArray(base?.rooms) ? base.rooms : [];
-  const patchRooms = Array.isArray(patch?.rooms) ? patch.rooms : [];
-  const seenRooms = new Set(baseRooms.map((r) => r?.id).filter(Boolean));
-  out.rooms = [...baseRooms, ...patchRooms.filter((r) => r?.id && !seenRooms.has(r.id))];
-
-  const baseDevices = Array.isArray(base?.devices) ? base.devices : [];
-  const patchDevices = Array.isArray(patch?.devices) ? patch.devices : [];
-  const seenDevices = new Set(baseDevices.map((d) => d?.id).filter(Boolean));
-  out.devices = [...baseDevices, ...patchDevices.filter((d) => d?.id && !seenDevices.has(d.id))];
-
-  return out;
 }
 
 /**

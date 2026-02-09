@@ -28,17 +28,13 @@ export function renderActionsContent(hass, section = {}) {
 function renderActionTile(hass, action = {}) {
   const entityId = action.entity || '';
   const hasService = !!action?.service && typeof action.service === 'object';
-  const hasCustomAction = !!(action.action && String(action.action).trim());
   const actionType = String(action.action || (hasService ? 'call_service' : 'press')).trim() || 'press';
-  // Allow tiles that trigger a custom action (e.g. toggle_talk) even without entity/service.
-  if (!entityId && !hasService && !hasCustomAction) return '';
+  if (!entityId && !hasService) return '';
 
   const state = entityId ? hass?.states?.[entityId] : null;
   const available = hasService
     ? true
-    : (entityId
-      ? (!!state && state.state !== 'unavailable' && state.state !== 'unknown')
-      : true);
+    : (!!state && state.state !== 'unavailable' && state.state !== 'unknown');
 
   const fallbackName = entityId ? entityId.split('.')[1] : 'action';
   const name = action.name || state?.attributes?.friendly_name || fallbackName;
