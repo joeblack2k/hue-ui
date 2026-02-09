@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.82';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.82';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.82';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.82';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.82';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.82';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.82';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.82';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.82';
+} from './config-loader3.js?v=3.1.83';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.83';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.83';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.83';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.83';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.83';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.83';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.83';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.83';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.82';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.82';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.82';
+} from '../widgets/bitcoin.widget.js?v=3.1.83';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.83';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.83';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1202,15 +1202,15 @@ const STYLES = `
     display: none !important;
   }
 
-  /* ===== CAMERA ===== */
-  .hue-camera-card {
-    background: var(--hue-surface-tile);
-    border-radius: var(--hue-radius-lg);
-    box-shadow: var(--hue-shadow-card);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    overflow: hidden;
-    cursor: default;
-  }
+	  /* ===== CAMERA ===== */
+	  .hue-camera-card {
+	    background: var(--hue-surface-tile);
+	    border-radius: var(--hue-radius-lg);
+	    box-shadow: var(--hue-shadow-card);
+	    border: 1px solid rgba(255, 255, 255, 0.06);
+	    overflow: hidden;
+	    cursor: default;
+	  }
 
   .hue-camera-card.is-unavailable {
     opacity: 0.72;
@@ -1260,18 +1260,53 @@ const STYLES = `
     gap: 10px;
   }
 
-  .hue-camera-badges {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
+	  .hue-camera-badges {
+	    display: inline-flex;
+	    align-items: center;
+	    gap: 8px;
+	    min-width: 0;
+	  }
 
-  .hue-camera-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
+	  .hue-camera-chips {
+	    display: flex;
+	    flex-wrap: wrap;
+	    align-items: center;
+	    justify-content: flex-end;
+	    gap: 8px;
+	  }
+
+	  .hue-chip {
+	    display: inline-flex;
+	    align-items: center;
+	    gap: 6px;
+	    padding: 6px 10px;
+	    border-radius: 999px;
+	    font-size: 11px;
+	    font-weight: 850;
+	    letter-spacing: 0.5px;
+	    background: rgba(0, 0, 0, 0.35);
+	    border: 1px solid rgba(255, 255, 255, 0.16);
+	    color: rgba(255, 255, 255, 0.92);
+	    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+	    white-space: nowrap;
+	  }
+
+	  .hue-chip ha-icon {
+	    --mdc-icon-size: 18px;
+	    opacity: 0.92;
+	  }
+
+	  .hue-chip.is-on {
+	    background: rgba(255, 205, 116, 0.22);
+	    border-color: rgba(255, 205, 116, 0.32);
+	    color: rgba(255, 235, 208, 0.98);
+	  }
+
+	  .hue-camera-badge {
+	    display: inline-flex;
+	    align-items: center;
+	    gap: 6px;
+	    padding: 6px 10px;
     border-radius: 999px;
     font-size: 11px;
     font-weight: 950;
@@ -1491,7 +1526,7 @@ class HueRoomScreen extends HTMLElement {
     this._config = config;
   }
 
-  connectedCallback() {
+	  connectedCallback() {
     // Ensure listeners are present on reconnect (belt-and-suspenders)
     if (this._rendered) {
       this._attachEventListeners();
@@ -1675,19 +1710,19 @@ class HueRoomScreen extends HTMLElement {
 
   // ===== Section Rendering =====
 
-  _renderSections() {
-    const sections = this._roomConfig.sections || [];
-    const blocks = [];
+	  _renderSections() {
+	    const sections = this._roomConfig.sections || [];
+	    const blocks = [];
 
     if (this._roomConfig.scenes && this._roomConfig.scenes.length > 0) {
       blocks.push(this._renderScenesSection(this._roomConfig.scenes));
     }
 
-    // Render sections in config order to allow rooms like "Voordeur" to put camera first.
-    for (const section of sections) {
-      if (!section || typeof section !== 'object') continue;
-      const type = String(section.type || '').trim().toLowerCase();
-      switch (type) {
+	    // Render sections in config order to allow rooms like "Voordeur" to put camera first.
+	    for (const section of sections) {
+	      if (!section || typeof section !== 'object') continue;
+	      const type = String(section.type || '').trim().toLowerCase();
+	      switch (type) {
         case 'news':
           blocks.push(this._renderNewsSection(section));
           break;
@@ -1703,9 +1738,10 @@ class HueRoomScreen extends HTMLElement {
         case 'climate':
           blocks.push(this._renderClimateSection(section));
           break;
-        case 'camera':
-          blocks.push(this._renderCameraSection(section));
-          break;
+	        case 'camera':
+	        case 'webrtc': // backwards compatible alias (older configs used "webrtc")
+	          blocks.push(this._renderCameraSection(section));
+	          break;
         case 'devices':
           blocks.push(this._renderDevicesSection(section));
           break;
@@ -1855,17 +1891,17 @@ class HueRoomScreen extends HTMLElement {
     `;
   }
 
-  _renderCameraSection(section) {
-    const entityId = section.entity || section.camera_entity || section.camera;
-    if (!entityId) return '';
+	  _renderCameraSection(section) {
+	    const entityId = section.entity || section.camera_entity || section.camera;
+	    if (!entityId) return '';
 
-    const state = this._hass?.states?.[entityId];
-    const available = !!state && state.state !== 'unavailable' && state.state !== 'unknown';
-    const title = section.title || 'CAMERA';
-    const cameraName = section.name || state?.attributes?.friendly_name || entityId.split('.')[1];
-    const statusText = !available ? 'Unavailable' : 'Live';
-    const streamUrl = this._cameraStreamUrl(entityId, state);
-    const snapshotUrl = this._cameraSnapshotUrl(entityId, state);
+	    const state = this._hass?.states?.[entityId];
+	    const available = !!state && state.state !== 'unavailable' && state.state !== 'unknown';
+	    const title = section.title || 'CAMERA';
+	    const cameraName = section.name || state?.attributes?.friendly_name || entityId.split('.')[1];
+	    const statusText = !available ? 'Unavailable' : 'Live';
+	    const streamUrl = this._cameraStreamUrl(entityId, state);
+	    const snapshotUrl = this._cameraSnapshotUrl(entityId, state);
     const refreshMs = Number.isFinite(Number(section.refresh_ms))
       ? Math.max(2000, Math.min(15000, Number(section.refresh_ms)))
       : 4500;
@@ -1873,13 +1909,26 @@ class HueRoomScreen extends HTMLElement {
     const loadingAttr = eager ? 'eager' : 'lazy';
     const fetchPriorityAttr = eager ? 'high' : 'auto';
 
-    const variant = String(section.variant || section.style || '').trim().toLowerCase();
-    const isRing = variant === 'ring' || variant === 'hero' || section.hero === true;
-    const lightEntity = String(section.light_entity || section.light || '').trim();
-    const lockEntity = String(section.lock_entity || section.lock || '').trim();
+	    const variant = String(section.variant || section.style || '').trim().toLowerCase();
+	    const isRing = variant === 'ring' || variant === 'hero' || section.hero === true;
+	    const lightEntity = String(section.light_entity || section.light || '').trim();
+	    const lockEntity = String(section.lock_entity || section.lock || '').trim();
+	    const ringEntity = String(
+	      section.doorbell_entity
+	        || section.ring_entity
+	        || section.attention_entity
+	        || this._roomConfig?.attention_entity
+	        || ''
+	    ).trim();
+	    const motionEntity = String(section.motion_entity || section.motion || this._roomConfig?.header?.motion || '').trim();
+	    const personEntity = String(section.person_entity || section.person || '').trim();
 
-    const ringControls = isRing ? `
-      <div class="hue-camera-overlay-bottom">
+	    const chipsHtml = isRing
+	      ? this._renderCameraChips({ ringEntity, motionEntity, personEntity })
+	      : '';
+
+	    const ringControls = isRing ? `
+	      <div class="hue-camera-overlay-bottom">
         <button class="hue-cam-btn is-primary" type="button" data-action="camera_reload" data-entity="${escapeHtml(entityId)}" aria-label="Live">
           <ha-icon icon="mdi:play"></ha-icon>
           <span class="lbl">Live</span>
@@ -1925,19 +1974,22 @@ class HueRoomScreen extends HTMLElement {
               data-refresh-ms="${refreshMs}"
               data-entity="${escapeHtml(entityId)}"
             />
-            ${isRing ? `
-              <div class="hue-camera-overlay">
-                <div class="hue-camera-overlay-top">
-                  <div class="hue-camera-badges">
-                    <span class="hue-camera-badge is-live"><span class="hue-camera-badge-dot"></span>Live</span>
-                    <span class="hue-camera-badge">${escapeHtml(cameraName)}</span>
-                  </div>
-                  <span class="hue-camera-badge">${escapeHtml(!available ? 'Offline' : 'Verbonden')}</span>
-                </div>
-              </div>
-            ` : ''}
-            ${ringControls}
-          </div>
+	            ${isRing ? `
+	              <div class="hue-camera-overlay">
+	                <div class="hue-camera-overlay-top">
+	                  <div class="hue-camera-badges">
+	                    <span class="hue-camera-badge is-live"><span class="hue-camera-badge-dot"></span>Live</span>
+	                    <span class="hue-camera-badge">${escapeHtml(cameraName)}</span>
+	                  </div>
+	                  <div class="hue-camera-chips">
+	                    ${chipsHtml}
+	                    <span class="hue-camera-badge">${escapeHtml(!available ? 'Offline' : 'Verbonden')}</span>
+	                  </div>
+	                </div>
+	              </div>
+	            ` : ''}
+	            ${ringControls}
+	          </div>
           <div class="hue-camera-meta" style="${isRing ? 'display:none;' : ''}">
             <div class="hue-camera-name">${escapeHtml(cameraName)}</div>
             <div class="hue-camera-status">${escapeHtml(statusText)}</div>
@@ -5774,14 +5826,14 @@ class HueRoomScreen extends HTMLElement {
     });
   }
 
-  _switchCameraToLive(img, refreshMs) {
-    const liveSrc = img.dataset.liveSrc;
-    if (!liveSrc) {
-      this._startSnapshotPolling(img, refreshMs);
-      return;
-    }
+	  _switchCameraToLive(img, refreshMs) {
+	    const liveSrc = img.dataset.liveSrc;
+	    if (!liveSrc) {
+	      this._startSnapshotPolling(img, refreshMs);
+	      return;
+	    }
 
-    img.dataset.mode = 'live';
+	    img.dataset.mode = 'live';
     const errorHandler = () => {
       img.removeEventListener('error', errorHandler);
       console.warn('[HueRoomScreen] Live stream error, falling back to snapshot polling');
@@ -5789,14 +5841,20 @@ class HueRoomScreen extends HTMLElement {
       this._startSnapshotPolling(img, refreshMs);
     };
     img.addEventListener('error', errorHandler, { once: true });
-    img.src = liveSrc;
+	    img.src = liveSrc;
 
-    // Periodically refresh the live URL (access tokens rotate)
-    const tokenRefreshId = setInterval(() => {
-      if (!img.isConnected) {
-        clearInterval(tokenRefreshId);
-        return;
-      }
+	    // Periodically refresh the live URL (access tokens rotate)
+	    const tokenKey = `token-${img.dataset.entity}`;
+	    const prevTokenInterval = this._cameraRefreshIntervals.get(tokenKey);
+	    if (prevTokenInterval) {
+	      clearInterval(prevTokenInterval);
+	      this._cameraRefreshIntervals.delete(tokenKey);
+	    }
+	    const tokenRefreshId = setInterval(() => {
+	      if (!img.isConnected) {
+	        clearInterval(tokenRefreshId);
+	        return;
+	      }
       const entityId = img.dataset.entity;
       if (!entityId) return;
       const state = this._hass?.states?.[entityId];
@@ -5806,17 +5864,19 @@ class HueRoomScreen extends HTMLElement {
       img.dataset.liveSrc = newLiveSrc;
       img.dataset.snapshotSrc = newSnapshotSrc;
       if (img.dataset.mode === 'live' && img.src !== newLiveSrc) {
-        img.src = newLiveSrc;
-      }
-    }, 60000);
-    this._cameraRefreshIntervals.set(`token-${img.dataset.entity}`, tokenRefreshId);
-  }
+	        img.src = newLiveSrc;
+	      }
+	    }, 60000);
+	    this._cameraRefreshIntervals.set(tokenKey, tokenRefreshId);
+	  }
 
-  _startSnapshotPolling(img, refreshMs) {
-    this._refreshCameraSnapshot(img, true);
-    const intervalId = setInterval(() => this._refreshCameraSnapshot(img), refreshMs);
-    this._cameraRefreshIntervals.set(img, intervalId);
-  }
+	  _startSnapshotPolling(img, refreshMs) {
+	    this._refreshCameraSnapshot(img, true);
+	    const prev = this._cameraRefreshIntervals.get(img);
+	    if (prev) clearInterval(prev);
+	    const intervalId = setInterval(() => this._refreshCameraSnapshot(img), refreshMs);
+	    this._cameraRefreshIntervals.set(img, intervalId);
+	  }
 
   _switchCameraToSnapshot(img) {
     this._refreshCameraSnapshot(img, true);
@@ -5847,12 +5907,37 @@ class HueRoomScreen extends HTMLElement {
     loader.src = nextSrc;
   }
 
-  _teardownCameraFeeds() {
-    for (const [key, intervalId] of this._cameraRefreshIntervals.entries()) {
-      clearInterval(intervalId);
-    }
-    this._cameraRefreshIntervals.clear();
-  }
+	  _teardownCameraFeeds() {
+	    for (const [key, intervalId] of this._cameraRefreshIntervals.entries()) {
+	      clearInterval(intervalId);
+	    }
+	    this._cameraRefreshIntervals.clear();
+	  }
+
+	  _renderCameraChips({ ringEntity = '', motionEntity = '', personEntity = '' } = {}) {
+	    const parts = [];
+	    parts.push(this._renderCameraChip(ringEntity, 'Bel', 'mdi:doorbell'));
+	    parts.push(this._renderCameraChip(motionEntity, 'Beweging', 'mdi:motion-sensor'));
+	    parts.push(this._renderCameraChip(personEntity, 'Persoon', 'mdi:human-greeting-variant'));
+	    return parts.filter(Boolean).join('');
+	  }
+
+	  _renderCameraChip(entityId, label, icon) {
+	    const id = String(entityId || '').trim();
+	    if (!id) return '';
+	    const st = this._hass?.states?.[id];
+	    if (!st) return '';
+	    const isOn = st.state === 'on';
+	    const ts = Date.parse(String(st.last_changed || ''));
+	    const when = Number.isFinite(ts) ? this._formatHhMm(ts) : '';
+	    const text = when ? `${label} · ${when}` : label;
+	    return `
+	      <span class="hue-chip ${isOn ? 'is-on' : ''}" title="${escapeHtml(id)}">
+	        <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
+	        <span class="txt">${escapeHtml(text)}</span>
+	      </span>
+	    `;
+	  }
 
   _updateCameraTiles() {
     this.shadowRoot.querySelectorAll('.hue-camera-card').forEach((tile) => {
