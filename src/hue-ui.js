@@ -6,11 +6,11 @@
  * - hue-home-screen: Weather + room tiles grid (restored Hue look)
  * - hue-room-screen: Config-driven room with sections (lighting, climate, devices)
  *
- * @version 3.1.78
+ * @version 3.1.77
  */
 
 console.info(
-  '%c HUE-UI %c v3.1.78 %c Config-Driven ',
+  '%c HUE-UI %c v3.1.77 %c Config-Driven ',
   'color: #fff; background: #c9a227; font-weight: bold; padding: 2px 4px; border-radius: 3px 0 0 3px;',
   'color: #c9a227; background: #3a2a1a; font-weight: bold; padding: 2px 4px;',
   'color: #3a2a1a; background: #f0c75e; font-weight: bold; padding: 2px 4px; border-radius: 0 3px 3px 0;'
@@ -101,12 +101,12 @@ async function loadCardModule(tag, modulePath, fallbackMessage) {
 // cards before the custom elements are registered (avoids "Configuration Error").
 await loadCardModule(
   'hue-home-screen',
-  './app/hue-home-screen3.js?v=3.1.78',
+  './app/hue-home-screen3.js?v=3.1.77',
   'Hue Home Screen failed to load. Check resource imports in console.'
 );
 
 await loadCardModule(
   'hue-room-screen',
-  './app/hue-room-screen3.js?v=3.1.78',
+  './app/hue-room-screen3.js?v=3.1.77',
   'Hue Room Screen failed to load. Check resource imports in console.'
 );
