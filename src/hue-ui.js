@@ -6,11 +6,11 @@
  * - hue-home-screen: Weather + room tiles grid (restored Hue look)
  * - hue-room-screen: Config-driven room with sections (lighting, climate, devices)
  *
- * @version 3.1.47
+ * @version 3.1.75
  */
 
 console.info(
-  '%c HUE-UI %c v3.1.47 %c Config-Driven ',
+  '%c HUE-UI %c v3.1.75 %c Config-Driven ',
   'color: #fff; background: #c9a227; font-weight: bold; padding: 2px 4px; border-radius: 3px 0 0 3px;',
   'color: #c9a227; background: #3a2a1a; font-weight: bold; padding: 2px 4px;',
   'color: #3a2a1a; background: #f0c75e; font-weight: bold; padding: 2px 4px; border-radius: 0 3px 3px 0;'
@@ -49,10 +49,19 @@ class HueUiFallbackCard extends HTMLElement {
   }
 
   _render() {
+    const escapeHtml = (s) =>
+      String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
     this.shadowRoot.innerHTML = `
       <ha-card>
-        <div style="padding: 16px; color: var(--error-color, #f44336); font-weight: 600;">
-          ${this._message}
+        <div style="padding: 16px; color: var(--error-color, #f44336); font-weight: 700;">
+          <div>Hue UI kon deze kaart niet laden.</div>
+          <pre style="margin:10px 0 0 0; white-space: pre-wrap; word-break: break-word; color: rgba(255,255,255,0.92); font-weight: 600; font-size: 12px; line-height: 1.4;">${escapeHtml(this._message)}</pre>
         </div>
       </ha-card>
     `;
@@ -82,19 +91,22 @@ async function loadCardModule(tag, modulePath, fallbackMessage) {
       console.error(`[HUE-UI] ${tag} module loaded but did not register custom element.`);
     }
   } catch (error) {
-    defineFallback(tag, fallbackMessage);
+    const msg = `${fallbackMessage}\n\nModule: ${modulePath}\nError: ${String(error?.message || error)}`;
+    defineFallback(tag, msg);
     console.error(`[HUE-UI] Failed to load ${tag} from ${modulePath}`, error);
   }
 }
 
-loadCardModule(
+// Important: we top-level await the imports so Lovelace won't try to render
+// cards before the custom elements are registered (avoids "Configuration Error").
+await loadCardModule(
   'hue-home-screen',
-  './app/hue-home-screen3.js?v=3.1.47',
+  './app/hue-home-screen3.js?v=3.1.75',
   'Hue Home Screen failed to load. Check resource imports in console.'
 );
 
-loadCardModule(
+await loadCardModule(
   'hue-room-screen',
-  './app/hue-room-screen3.js?v=3.1.47',
+  './app/hue-room-screen3.js?v=3.1.75',
   'Hue Room Screen failed to load. Check resource imports in console.'
 );

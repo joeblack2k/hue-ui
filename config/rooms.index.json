@@ -1,179 +1,48 @@
 {
-  "home_name": "Huisje Weltevree",
+  "home_name": "Home",
+  "dashboard_path": "/hue-ui",
+  "weather_entity": "weather.home",
+  "weather_location": "Your City",
+  "weather_rain_chance_entity": "sensor.rain_chance_next_hour",
   "people": [
-    "person.jeroen",
-    "person.melanie"
+    "person.example"
   ],
   "people_area_sensors": {
-    "person.jeroen": "sensor.jeroen_iphone_17_pro_max_area",
-    "person.melanie": "sensor.melanie_iphone_air_area"
+    "person.example": "sensor.example_phone_area"
   },
   "rooms": [
     {
-      "id": "woonkamer",
-      "name": "Woonkamer",
+      "id": "living_room",
+      "name": "Living Room",
       "icon": "mdi:sofa",
-      "room_file": "/local/hue-ui/config/rooms/woonkamer.json",
+      "room_file": "/local/hue-ui/config/rooms/living_room.json",
       "lights": [
-        "light.woonkamer_plafond_lamp",
-        "light.woonkamer_boekenkast_rechts",
-        "light.woonkamer_ambilight_rechts",
-        "light.woonkamer_ambilight_links",
-        "light.woonkamer_surround_links",
-        "light.woonkamer_surround_rechts",
-        "light.woonkamer_onderdetv_rechts",
-        "light.woonkamer_onderdetv_links",
-        "light.woonkamer_lamp_eettafel1",
-        "light.woonkamer_lamp_eettafel2",
-        "light.woonkamer_lamp_eettafel3"
+        "light.living_room_main"
       ],
       "sensors": {
-        "temperature": "sensor.switchbot_tempsensor_temperature",
-        "motion": "binary_sensor.motionsensor_woonkamer"
-      }
-    },
-    {
-      "id": "keuken",
-      "name": "Keuken",
-      "icon": "mdi:fridge",
-      "room_file": "/local/hue-ui/config/rooms/keuken.json",
-      "lights": [
-        "light.keuken_lamp_spot1",
-        "light.keuken_lamp_spot2",
-        "light.keuken_lamp_spot3",
-        "light.keuken_lamp_spot4"
-      ],
-      "sensors": {
-        "temperature": "sensor.keuken_motionsensor_temperature",
-        "motion": "binary_sensor.keuken_motionsensor_occupancy"
-      }
-    },
-    {
-      "id": "slaapkamer",
-      "name": "Slaapkamer",
-      "icon": "mdi:bed",
-      "room_file": "/local/hue-ui/config/rooms/slaapkamer.json",
-      "lights": [
-        "light.slaapkamer_lamp_plafond",
-        "light.lightstrip_onder_het_bed"
-      ],
-      "sensors": {
-        "temperature": "sensor.xiaomi_tempsensor_temperature"
-      }
-    },
-    {
-      "id": "badkamer",
-      "name": "Badkamer",
-      "icon": "mdi:shower",
-      "room_file": "/local/hue-ui/config/rooms/badkamer.json",
-      "lights": [
-        "light.badkamer_wastafel_spot1",
-        "light.hue_ambiance_spot_1",
-        "light.badkamer_douche_spot1",
-        "light.badkamer_douche_spot2",
-        "light.badkamer_bad_spot1",
-        "light.badkamer_bad_spot2",
-        "light.badkamer_bad_spot3"
-      ],
-      "sensors": {
-        "temperature": "sensor.hue_outdoor_motion_sensor_2_temperature",
-        "motion": "binary_sensor.badkamer_motionsensor_hue_occupancy",
-        "shower": "input_boolean.douche_mode"
-      }
-    },
-    {
-      "id": "bioscoop",
-      "name": "Bioscoop",
-      "icon": "mdi:movie-open",
-      "room_file": "/local/hue-ui/config/rooms/bioscoop.json",
-      "lights": [
-        "light.bioscoop_led",
-        "light.bioscoop_lamp_nanoleaf"
-      ],
-      "sensors": {
-        "temperature": "sensor.bioscoop_lg_airco_bioscoop_lg_airco_pipe_temperature_mid"
-      }
-    },
-    {
-      "id": "felix",
-      "name": "Felix",
-      "icon": "mdi:account",
-      "room_file": "/local/hue-ui/config/rooms/felix.json",
-      "lights": [
-        "light.felix_wandlamp_links",
-        "light.felix_wandlamp_rechts"
-      ],
-      "sensors": {}
-    },
-    {
-      "id": "noah",
-      "name": "Noah",
-      "icon": "mdi:account",
-      "room_file": "/local/hue-ui/config/rooms/noah.json",
-      "lights": [
-        "light.noah_hue_go",
-        "light.noah_lamp_wandlamp"
-      ],
-      "sensors": {
-        "temperature": "sensor.noah_temp_sensor_temperature"
-      }
-    },
-    {
-      "id": "achtertuin",
-      "name": "Achtertuin",
-      "icon": "mdi:flower",
-      "room_file": "/local/hue-ui/config/rooms/achtertuin.json",
-      "lights": [
-        "light.achtertuin_outdoor_schuur",
-        "light.achtertuin_lamp_spot1",
-        "light.hue_impress_outdoor_wall_1",
-        "light.hue_impress_outdoor_wall_1_2"
-      ],
-      "sensors": {
-        "motion": "binary_sensor.achtertuin_motionaware"
-      }
-    },
-    {
-      "id": "3d_printer",
-      "name": "3D Printer",
-      "icon": "mdi:printer-3d-nozzle",
-      "room_file": "/local/hue-ui/config/rooms/3d_printer.json",
-      "hide_on_home": true,
-      "lights": [
-        "light.bambu_x1c_chamber_light"
-      ],
-      "sensors": {
-        "temperature": "sensor.bambu_x1c_chamber_temperature"
+        "temperature": "sensor.living_room_temperature",
+        "motion": "binary_sensor.living_room_motion"
       }
     }
   ],
-  "weather_entity": "weather.buienradar",
-  "weather_location": "Leidschendam",
-  "weather_rain_chance_entity": "sensor.neerslag_buienradar_regen_data",
-  "dashboard_path": "/hue-ui",
   "devices": [
     {
-      "id": "bambu_printer",
-      "name": "3D Printer",
-      "icon": "mdi:printer-3d",
-      "entity": "sensor.bambu_x1c_print_status",
-      "progress_entity": "sensor.bambu_x1c_print_progress",
-      "eta_entity": "sensor.bambu_x1c_remaining_time",
-      "toggle": false,
-      "path": "3d_printer"
+      "id": "example_device",
+      "name": "Example Device",
+      "icon": "mdi:devices",
+      "entity": "switch.example",
+      "toggle": true
     },
     {
-      "id": "tesla_model_y",
+      "id": "tesla",
       "kind": "tesla",
-      "name": "Anne Fleur",
+      "name": "Tesla Model Y",
       "icon": "mdi:car-electric",
-      "toggle": false,
+      "path": "device/tesla",
       "tesla": {
-        "integration_hint": "tessie",
-        "prefix": "anne_fleur"
+        "integration_hint": "tessie"
       }
     }
-  ],
-  "language_file": "dutch.lang",
-  "theme_id": "default"
+  ]
 }
+

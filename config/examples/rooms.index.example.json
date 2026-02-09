@@ -1,5 +1,5 @@
 {
-  "home_name": "Huisje Weltevree",
+  "home_name": "Home",
   "dashboard_path": "/hue-ui",
   "weather_entity": "weather.home",
   "weather_location": "Your City",

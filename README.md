@@ -71,7 +71,7 @@ The UI is config-driven via JSON under `config/` in `/config/www/hue-ui/`.
 
 Important fields in `rooms.index.json`:
 
-- `home_name`: the title shown on the Home screen (example: `Huisje Weltevree`)
+- `home_name`: the title shown on the Home screen (example: `Home`)
 - `dashboard_path`: base path used for internal navigation (example: `/hue-ui`)
 - `rooms[]`: your rooms list, their `lights[]`, and `sensors` (temp/motion/shower)
 - `devices[]`: extra tiles (example: printer progress)
@@ -92,7 +92,7 @@ To reset overrides, clear the site data for your Home Assistant URL or remove lo
 This repo should stay safe to share publicly.
 
 - Never commit real entity IDs that include personal names, addresses, or device identifiers.
-- Keep real configs in `config/rooms.index.json` and `config/rooms/` (ignored by `.gitignore`).
+- Keep real configs in `config/rooms.index.local.json` and `config/rooms/` (ignored by `.gitignore`).
 - Commit with a clear message that states what changed and why.
 - Update `CHANGELOG.md` for user-visible changes.
 

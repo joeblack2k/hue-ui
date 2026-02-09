@@ -5,6 +5,7 @@
 const configCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const ROOM_OVERRIDE_PREFIX = 'hue-ui-room-config-override:';
+const ROOMS_INDEX_LOCAL_URL = '/local/hue-ui/config/rooms.index.local.json';
 const ROOMS_INDEX_URL = '/local/hue-ui/config/rooms.index.json';
 const ROOMS_INDEX_OVERRIDE_KEY = 'hue-ui-rooms-index-override';
 
@@ -15,7 +16,16 @@ const ROOMS_INDEX_OVERRIDE_KEY = 'hue-ui-rooms-index-override';
 export async function loadRoomsIndex() {
   const override = getRoomsIndexOverride();
   if (override) return override;
-  return fetchWithCache(ROOMS_INDEX_URL);
+  try {
+    // Prefer local (non-versioned) config if present.
+    return await fetchWithCache(ROOMS_INDEX_LOCAL_URL);
+  } catch (error) {
+    // Only fall back if the local file isn't present.
+    if (String(error?.message || '').includes(' 404')) {
+      return fetchWithCache(ROOMS_INDEX_URL);
+    }
+    throw error;
+  }
 }
 
 /**

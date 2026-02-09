@@ -1,9 +1,19 @@
 .DS_Store
 ._*
+__pycache__/
 
 # Local Home Assistant instance config (contains personal entity IDs)
 config/rooms.index.json
+config/rooms.index.local.json
 config/rooms/
 
 # Optional local screenshots/assets
 image.png
+debug-import.html
+bug*.md
+smartthings_probe.py
+scripts/
+tasks/
+
+# Prefetched runtime JSON (never commit)
+data/

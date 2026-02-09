@@ -10,11 +10,13 @@
  *   followed by ROOMS + DEVICES sections
  */
 
-import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.47';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.47';
-import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.47';
-import { renderTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.47';
-import { renderTeslaScreen } from './tesla-screen.js?v=3.1.47';
+import { loadRoomsIndex, saveRoomsIndexOverride, loadLanguageFile } from './config-loader3.js?v=3.1.51';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
+import { escapeHtml, translateCondition, getWeatherEmoji, getTemperatureLEDColor, setTranslations, t } from '../ui/helpers2.js?v=3.1.51';
+import { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS } from '../widgets/tesla.widget.js?v=3.1.51';
+import { renderBitcoinTile, updateBitcoinTile, fetchBtcPrice, BITCOIN_TILE_CSS } from '../widgets/bitcoin.widget.js?v=3.1.75';
+import { renderTeslaScreen } from './tesla-screen.js?v=3.1.51';
+import { renderNewsTile, NEWS_TILE_CSS } from '../widgets/news.widget.js?v=3.1.75';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -208,7 +210,11 @@ const STYLES = `
 
   /* ===== WEATHER WIDGET ===== */
   .weather-widget {
-    background: var(--hue-surface-tile);
+    background:
+      radial-gradient(circle at 22% 18%, rgba(255,255,255,0.20), transparent 40%),
+      radial-gradient(circle at 78% 28%, rgba(186, 230, 253, 0.22), transparent 42%),
+      radial-gradient(circle at 50% 120%, rgba(34, 211, 238, 0.22), transparent 55%),
+      linear-gradient(155deg, rgba(37, 99, 235, 0.55) 0%, rgba(14, 165, 233, 0.35) 45%, rgba(2, 132, 199, 0.22) 70%, rgba(10, 20, 36, 0.55) 100%);
     border-radius: var(--hue-radius-lg);
     padding: 16px;
     margin-bottom: 24px;
@@ -216,25 +222,88 @@ const STYLES = `
     align-items: center;
     gap: 16px;
     box-shadow: var(--hue-shadow-card);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(118, 185, 255, 0.22);
     position: relative;
     overflow: hidden;
     will-change: opacity, transform;
   }
 
-  .widget-pager-frame {
-    background: var(--hue-surface-tile);
-    border-radius: var(--hue-radius-lg);
-    box-shadow: var(--hue-shadow-card);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    margin-bottom: 24px;
-    overflow: hidden;
-    will-change: opacity, transform;
-    position: relative;
+  .weather-widget::after {
+    content: '';
+    position: absolute;
+    inset: -40% -40%;
+    background: linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0) 70%);
+    transform: translateX(-25%) rotate(10deg);
+    animation: weatherSheen 6.5s ease-in-out infinite;
+    pointer-events: none;
+    opacity: 0.9;
   }
 
-  .widget-pager-frame::before,
-  .widget-pager-frame::after {
+  @keyframes weatherSheen {
+    0%, 25% { transform: translateX(-40%) rotate(10deg); opacity: 0.0; }
+    45% { opacity: 0.85; }
+    65% { transform: translateX(40%) rotate(10deg); opacity: 0.55; }
+    100% { transform: translateX(55%) rotate(10deg); opacity: 0.0; }
+  }
+
+	  .widget-pager-frame {
+	    /* Default sky (overridden by [data-sky]) */
+	    background:
+	      radial-gradient(circle at 18% 14%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.0) 44%),
+	      radial-gradient(circle at 44% 110%, rgba(40, 195, 255, 0.16) 0%, rgba(40, 195, 255, 0) 55%),
+	      linear-gradient(180deg, rgba(78, 195, 255, 0.78) 0%, rgba(38, 132, 255, 0.72) 45%, rgba(14, 42, 82, 0.82) 100%);
+	    border-radius: var(--hue-radius-lg);
+	    box-shadow: var(--hue-shadow-card);
+	    border: 1px solid rgba(186, 230, 253, 0.30);
+	    margin-bottom: 24px;
+	    overflow: hidden;
+	    will-change: opacity, transform;
+	    position: relative;
+	  }
+
+	  /* Samsung-like sky card that matches the CURRENT weather */
+	  .widget-pager-frame[data-sky="sun"] {
+	    background:
+	      radial-gradient(circle at 82% 18%, rgba(255, 244, 171, 0.85) 0%, rgba(255, 214, 99, 0.42) 12%, rgba(255, 214, 99, 0.0) 26%),
+	      radial-gradient(circle at 18% 14%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.0) 44%),
+	      radial-gradient(circle at 44% 110%, rgba(40, 195, 255, 0.22) 0%, rgba(40, 195, 255, 0) 55%),
+	      linear-gradient(180deg, rgba(78, 195, 255, 0.92) 0%, rgba(38, 132, 255, 0.86) 45%, rgba(14, 42, 82, 0.92) 100%);
+	    border-color: rgba(186, 230, 253, 0.34);
+	    box-shadow:
+	      var(--hue-shadow-card),
+	      0 0 26px rgba(78, 195, 255, 0.14);
+	  }
+
+	  .widget-pager-frame[data-sky="cloud"] {
+	    background:
+	      radial-gradient(circle at 18% 14%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.0) 46%),
+	      radial-gradient(circle at 74% 20%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.0) 44%),
+	      linear-gradient(180deg, rgba(120, 170, 205, 0.78) 0%, rgba(70, 120, 180, 0.70) 48%, rgba(18, 46, 84, 0.86) 100%);
+	    border-color: rgba(210, 230, 245, 0.26);
+	    box-shadow:
+	      var(--hue-shadow-card),
+	      0 0 18px rgba(120, 170, 205, 0.12);
+	  }
+
+	  .widget-pager-frame[data-sky="rain"] {
+	    background:
+	      repeating-linear-gradient(
+	        110deg,
+	        rgba(173, 216, 255, 0) 0px,
+	        rgba(173, 216, 255, 0) 10px,
+	        rgba(173, 216, 255, 0.16) 11px,
+	        rgba(173, 216, 255, 0.16) 12px
+	      ),
+	      radial-gradient(circle at 18% 14%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.0) 50%),
+	      linear-gradient(180deg, rgba(64, 122, 188, 0.70) 0%, rgba(34, 86, 146, 0.72) 48%, rgba(10, 24, 46, 0.90) 100%);
+	    border-color: rgba(173, 216, 255, 0.22);
+	    box-shadow:
+	      var(--hue-shadow-card),
+	      0 0 18px rgba(173, 216, 255, 0.10);
+	  }
+
+	  .widget-pager-frame::before,
+	  .widget-pager-frame::after {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
@@ -266,9 +335,9 @@ const STYLES = `
     opacity: 0.75;
   }
 
-  .widget-pager-frame[data-page="people"]::before {
-    opacity: 0.2;
-  }
+	  .widget-pager-frame[data-page="people"]::before {
+	    opacity: 0.2;
+	  }
 
   .widget-pager-frame[data-page="people"]::after {
     opacity: 0.78;
@@ -278,9 +347,9 @@ const STYLES = `
     opacity: 0.78;
   }
 
-  .widget-pager-frame[data-page="weather"]::after {
-    opacity: 0.25;
-  }
+	  .widget-pager-frame[data-page="weather"]::after {
+	    opacity: 0.25;
+	  }
 
   .widget-pager {
     display: flex;
@@ -308,15 +377,61 @@ const STYLES = `
     padding: 16px;
   }
 
-  .widget-page .weather-widget {
-    margin-bottom: 0;
-    padding: 0;
-    min-height: 100%;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    background: transparent;
-  }
+	  .widget-page .weather-widget {
+	    margin-bottom: 0;
+	    padding: 0;
+	    min-height: 100%;
+	    border: 0;
+	    border-radius: 0;
+	    box-shadow: none;
+	    background: transparent;
+	  }
+
+	  /* Keep the Home weather widget compact, but style it like a Samsung card */
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-widget {
+	    position: relative;
+	    align-items: flex-start;
+	  }
+
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-icon {
+	    position: absolute;
+	    right: 14px;
+	    top: 12px;
+	    width: auto;
+	    height: auto;
+	    background: transparent;
+	    border: 0;
+	    box-shadow: none;
+	    font-size: 44px;
+	    opacity: 0.95;
+	  }
+
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-info {
+	    padding-right: 62px;
+	  }
+
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-temp {
+	    font-size: 56px;
+	    font-weight: 300;
+	    letter-spacing: -1.2px;
+	    text-shadow: 0 4px 16px rgba(0,0,0,0.25);
+	  }
+
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-condition {
+	    font-size: 18px;
+	    font-weight: 650;
+	    color: rgba(255,255,255,0.92);
+	    text-shadow: 0 2px 10px rgba(0,0,0,0.25);
+	  }
+
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-location,
+	  .widget-pager-frame[data-page="weather"] .widget-page .weather-rain {
+	    padding: 0;
+	    border: 0;
+	    background: transparent;
+	    backdrop-filter: none;
+	    color: rgba(255,255,255,0.82);
+	  }
 
   /* ===== WEATHER FULLSCREEN FX ===== */
   .weather-fx-overlay {
@@ -425,11 +540,13 @@ const STYLES = `
   .weather-widget::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 18% 26%, rgba(255,255,255,0.10), rgba(255,255,255,0) 46%),
+      radial-gradient(circle at 76% 22%, rgba(255,255,255,0.08), rgba(255,255,255,0) 44%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.02) 1px, transparent 3px, transparent 7px);
+    opacity: 0.7;
   }
 
   .weather-icon {
@@ -440,10 +557,13 @@ const STYLES = `
     justify-content: center;
     width: 72px;
     height: 72px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.14);
     border-radius: var(--hue-radius-full);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 16px rgba(0,0,0,0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow:
+      0 10px 20px rgba(0,0,0,0.30),
+      0 0 0 1px rgba(255,255,255,0.06) inset;
+    backdrop-filter: blur(8px);
   }
 
   .weather-emoji {
@@ -456,18 +576,21 @@ const STYLES = `
 
   .weather-temp {
     font-size: 44px;
-    font-weight: 700;
+    font-weight: 850;
     color: var(--hue-text-primary);
     text-shadow: 0 2px 4px rgba(0,0,0,0.45);
     line-height: 1;
     margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.4px;
   }
 
   .weather-condition {
-    font-size: var(--hue-font-size-lg);
-    color: var(--hue-text-secondary);
+    font-size: 16px;
+    color: rgba(255,255,255,0.88);
     text-shadow: 0 1px 2px rgba(0,0,0,0.45);
-    font-weight: var(--hue-font-weight-medium);
+    font-weight: 800;
+    letter-spacing: 0.2px;
   }
 
   .weather-meta {
@@ -481,12 +604,22 @@ const STYLES = `
   .weather-location,
   .weather-rain {
     font-size: 12px;
-    color: var(--hue-text-muted);
+    color: rgba(255,255,255,0.72);
     line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(0,0,0,0.18);
+    backdrop-filter: blur(8px);
   }
 
   .weather-rain {
-    color: var(--hue-text-secondary);
+    color: rgba(173,216,255,0.92);
+    border-color: rgba(173,216,255,0.22);
+    background: rgba(173,216,255,0.12);
   }
 
   /* ===== PEOPLE ROW ===== */
@@ -1399,6 +1532,8 @@ const STYLES = `
   }
 
   ${TESLA_TILE_CSS}
+  ${BITCOIN_TILE_CSS}
+  ${NEWS_TILE_CSS}
 `;
 
 class HueHomeScreen extends HTMLElement {
@@ -1432,6 +1567,8 @@ class HueHomeScreen extends HTMLElement {
     this._weatherFxHideTimer = null;
     this._weatherFxCleanupTimer = null;
     this._homeReturnRerenderTimer = null;
+    this._widgetPagerScrollRaf = null;
+    this._widgetLivePageName = 'people';
     this._roomLongPressTimer = null;
     this._roomLongPressPointerId = null;
     this._roomLongPressStart = null;
@@ -1440,6 +1577,17 @@ class HueHomeScreen extends HTMLElement {
     this._homeRoomEditor = null;
     this._homeRoomSnapshot = null;
     this._lastRenderedPath = null;
+    this._teslaCountdownTimer = null;
+
+    // Bitcoin tile cache (CoinGecko)
+    this._bitcoinPriceState = null;
+    this._bitcoinPriceTimer = null;
+    this._bitcoinPriceInflight = false;
+    this._bitcoinPriceLastFetchAt = 0;
+
+    // Doorbell auto-open (optional)
+    this._doorbellLastOn = null;
+    this._doorbellLastAutoOpenAt = 0;
   }
 
   setConfig(config) {
@@ -1447,6 +1595,7 @@ class HueHomeScreen extends HTMLElement {
   }
 
   connectedCallback() {
+    this._enterKioskMode();
     if (!this._locationListenerAttached) {
       window.addEventListener('location-changed', this._onLocationChanged);
       this._locationListenerAttached = true;
@@ -1521,7 +1670,7 @@ class HueHomeScreen extends HTMLElement {
     if (!this._hass || !this._roomsIndex) return;
 
     const hasDevices = (this._roomsIndex.devices || []).length > 0;
-    const homeName = this._roomsIndex.home_name || 'Huisje Weltevree';
+    const homeName = this._roomsIndex.home_name || 'Home';
     const route = this._getRouteState();
     const isPersonScreen = route.kind === 'person';
     const isDeviceScreen = route.kind === 'device';
@@ -1624,6 +1773,7 @@ class HueHomeScreen extends HTMLElement {
         this._clearWeatherFullscreenEffect(true);
       }
       this._updateStates();
+      this._ensureBitcoinPriceTimer();
       this._rendered = true;
       this._lastRenderedPath = window.location.pathname;
       this._error = null;
@@ -1803,9 +1953,9 @@ class HueHomeScreen extends HTMLElement {
       ...index,
       home_name: configuredHomeName && configuredHomeName.toLowerCase() !== 'home'
         ? configuredHomeName
-        : 'Huisje Weltevree',
+        : 'Home',
       weather_entity: typeof index.weather_entity === 'string' ? index.weather_entity : 'weather.buienradar',
-      weather_location: typeof index.weather_location === 'string' ? index.weather_location : 'Leidschendam',
+      weather_location: typeof index.weather_location === 'string' ? index.weather_location : 'Your City',
       weather_rain_chance_entity: typeof index.weather_rain_chance_entity === 'string'
         ? index.weather_rain_chance_entity
         : 'sensor.neerslag_buienradar_regen_data',
@@ -1924,9 +2074,21 @@ class HueHomeScreen extends HTMLElement {
     this._widgetPagerEl.removeEventListener('scroll', this._onWidgetPagerScroll);
     this._widgetPagerEl.addEventListener('scroll', this._onWidgetPagerScroll, { passive: true });
     this._resetWidgetPager();
+    this._syncWidgetPagerSkyFromWeather();
   }
 
   _onWidgetPagerScroll() {
+    if (!this._widgetPagerEl || !this._widgetPagerFrameEl) return;
+
+    // Update page styling immediately during a swipe so the UI doesn't "hang"
+    // on the previous page for a moment. Fullscreen FX still triggers only on settle.
+    if (!this._widgetPagerScrollRaf) {
+      this._widgetPagerScrollRaf = requestAnimationFrame(() => {
+        this._widgetPagerScrollRaf = null;
+        this._syncWidgetPagerPageFromScroll(true);
+      });
+    }
+
     if (this._widgetPagerSettleTimer) {
       clearTimeout(this._widgetPagerSettleTimer);
     }
@@ -1935,6 +2097,32 @@ class HueHomeScreen extends HTMLElement {
       this._widgetPagerSettleTimer = null;
       this._handleWidgetPagerSettled();
     }, 120);
+  }
+
+  _syncWidgetPagerPageFromScroll(live = false) {
+    if (!this._widgetPagerEl || !this._widgetPagerFrameEl) return;
+
+    const pageWidth = this._widgetPagerEl.clientWidth || 1;
+    const pageCount = this._widgetPagerEl.children.length || 1;
+    const nextIndex = Math.min(
+      Math.max(Math.floor((this._widgetPagerEl.scrollLeft + pageWidth * 0.5) / pageWidth), 0),
+      pageCount - 1
+    );
+
+    const pageName = nextIndex === 1 ? 'weather' : 'people';
+
+    if (live) {
+      if (pageName === this._widgetLivePageName) return;
+      this._widgetLivePageName = pageName;
+      this._widgetPagerFrameEl.dataset.page = pageName;
+      if (pageName !== 'weather') {
+        // Leaving the weather page: remove any lingering FX immediately.
+        this._clearWeatherFullscreenEffect(true);
+      }
+      return;
+    }
+
+    this._widgetPagerFrameEl.dataset.page = pageName;
   }
 
   _handleWidgetPagerSettled() {
@@ -1952,6 +2140,7 @@ class HueHomeScreen extends HTMLElement {
     this._widgetPageIndex = nextIndex;
     const pageName = nextIndex === 1 ? 'weather' : 'people';
     this._widgetPagerFrameEl.dataset.page = pageName;
+    this._widgetLivePageName = pageName;
 
     if (pageName === 'weather') {
       this._playWeatherFullscreenEffect();
@@ -1966,13 +2155,19 @@ class HueHomeScreen extends HTMLElement {
     this._widgetPageIndex = 0;
     this._widgetPagerEl.scrollLeft = 0;
     this._widgetPagerFrameEl.dataset.page = 'people';
+    this._widgetLivePageName = 'people';
     this._clearWeatherFullscreenEffect(true);
   }
 
   disconnectedCallback() {
+    this._exitKioskMode();
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
+    }
+    if (this._widgetPagerScrollRaf) {
+      cancelAnimationFrame(this._widgetPagerScrollRaf);
+      this._widgetPagerScrollRaf = null;
     }
     if (this._scrollEl) {
       this._scrollEl.removeEventListener('scroll', this._onScroll);
@@ -1988,6 +2183,8 @@ class HueHomeScreen extends HTMLElement {
       clearTimeout(this._homeReturnRerenderTimer);
       this._homeReturnRerenderTimer = null;
     }
+    this._clearTeslaCountdownTimer();
+    this._clearBitcoinPriceTimer();
     this._clearRoomLongPress();
     this._closeHomeRoomEditor({ discardChanges: true });
     this._clearWeatherFullscreenEffect(true);
@@ -1997,12 +2194,70 @@ class HueHomeScreen extends HTMLElement {
     }
   }
 
+  _enterKioskMode() {
+    if (this._kioskRestore) return;
+    this._kioskRestore = [];
+    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
+    for (const el of nodes) {
+      if (!el || !(el instanceof HTMLElement)) continue;
+      // Avoid hiding headers inside the card itself.
+      if (this.contains(el)) continue;
+      const prev = el.style.display;
+      this._kioskRestore.push([el, prev]);
+      el.style.setProperty('display', 'none', 'important');
+    }
+  }
+
+  _exitKioskMode() {
+    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
+    this._kioskRestore = null;
+    if (!restore) return;
+    for (const [el, prev] of restore) {
+      try {
+        if (!el || !(el instanceof HTMLElement)) continue;
+        if (prev) el.style.display = prev;
+        else el.style.removeProperty('display');
+      } catch (_e) { /* ignore */ }
+    }
+  }
+
+  _deepQueryAll(selectors) {
+    const sel = Array.isArray(selectors) ? selectors : [selectors];
+    const out = [];
+    const seen = new Set();
+    const stack = [document.documentElement];
+    while (stack.length) {
+      const root = stack.pop();
+      if (!root) continue;
+      try {
+        for (const s of sel) {
+          const list = root.querySelectorAll ? root.querySelectorAll(s) : [];
+          for (const el of list) {
+            if (!el) continue;
+            if (seen.has(el)) continue;
+            seen.add(el);
+            out.push(el);
+          }
+        }
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+        let n = walker.currentNode;
+        while (n) {
+          if (n.shadowRoot) stack.push(n.shadowRoot);
+          n = walker.nextNode();
+        }
+      } catch (_e) { /* ignore */ }
+    }
+    return out;
+  }
+
   // ===== Weather =====
 
   _updateWeather() {
     const weatherEntity = this._roomsIndex?.weather_entity || 'weather.buienradar';
     const weather = this._hass?.states[weatherEntity];
     if (!weather) return;
+
+    this._syncWidgetPagerSkyFromWeather(weather.state);
 
     const tempEl = this.shadowRoot.querySelector('.weather-temp');
     const condEl = this.shadowRoot.querySelector('.weather-condition');
@@ -2025,6 +2280,13 @@ class HueHomeScreen extends HTMLElement {
       if (emojiEl) emojiEl.textContent = emoji;
       iconEl.dataset.condition = weather.state;
     }
+  }
+
+  _syncWidgetPagerSkyFromWeather(condition = null) {
+    if (!this._widgetPagerFrameEl) return;
+    const weatherEntity = this._roomsIndex?.weather_entity || 'weather.buienradar';
+    const cond = condition ?? this._hass?.states?.[weatherEntity]?.state ?? '';
+    this._widgetPagerFrameEl.dataset.sky = this._mapWeatherEffect(cond);
   }
 
   _renderWeatherWidget() {
@@ -2136,11 +2398,13 @@ class HueHomeScreen extends HTMLElement {
 
     if (
       value.includes('sunny') ||
-      value.includes('clear') ||
-      value.includes('partlycloudy')
+      value.includes('clear')
     ) {
       return 'sun';
     }
+
+    // "partlycloudy" often still looks mostly cloudy; avoid a sunny bias.
+    if (value.includes('partly') && value.includes('cloud')) return 'cloud';
 
     return 'cloud';
   }
@@ -2159,6 +2423,7 @@ class HueHomeScreen extends HTMLElement {
       </div>
     `;
   }
+
 
   // ===== People =====
 
@@ -2275,6 +2540,8 @@ class HueHomeScreen extends HTMLElement {
   _renderDeviceTile(device) {
     if (!device || typeof device !== 'object') return '';
     if (device.kind === 'tesla') return renderTeslaTile(this._hass, device);
+    if (device.kind === 'bitcoin') return renderBitcoinTile(device, this._bitcoinPriceState);
+    if (device.kind === 'news') return renderNewsTile(device);
     const entityId = device.entity;
     const state = entityId ? this._hass?.states[entityId] : null;
     const isActive = this._isDeviceActive(device, state);
@@ -2419,6 +2686,12 @@ class HueHomeScreen extends HTMLElement {
   // ===== Event Listeners =====
 
   _attachEventListeners() {
+    const fireLocationChanged = () => {
+      // Dispatch twice (next tick as backup) because some HA views debounce route events.
+      window.dispatchEvent(new Event('location-changed'));
+      setTimeout(() => window.dispatchEvent(new Event('location-changed')), 0);
+    };
+
     this.shadowRoot.querySelectorAll('[data-home-action]').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.preventDefault();
@@ -2431,7 +2704,7 @@ class HueHomeScreen extends HTMLElement {
         if (action === 'go_home') {
           const path = el.dataset.path || (this._roomsIndex?.dashboard_path || '/hue-ui');
           window.history.pushState(null, '', path);
-          window.dispatchEvent(new Event('location-changed'));
+          fireLocationChanged();
         }
       });
     });
@@ -2457,7 +2730,7 @@ class HueHomeScreen extends HTMLElement {
         const roomId = tile.dataset.room;
         const dashboardPath = this._roomsIndex.dashboard_path || '/hue-ui';
         window.history.pushState(null, '', `${dashboardPath}/${roomId}`);
-        window.dispatchEvent(new Event('location-changed'));
+        fireLocationChanged();
       });
     });
 
@@ -2483,9 +2756,22 @@ class HueHomeScreen extends HTMLElement {
         if (!entityId) return;
         const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
         window.history.pushState(null, '', `${dashboardPath}/person/${encodeURIComponent(entityId)}`);
-        window.dispatchEvent(new Event('location-changed'));
+        fireLocationChanged();
       });
     });
+
+    // Weather widget tap - navigate to Weather room
+    const weatherWidget = this.shadowRoot.querySelector('.weather-widget');
+    if (weatherWidget) {
+      weatherWidget.addEventListener('click', (e) => {
+        // Avoid taps on child buttons (if any are added later)
+        if (e.target.closest('button, a, input, select')) return;
+        hapticFeedback();
+        const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
+        window.history.pushState(null, '', `${dashboardPath}/weather`);
+        fireLocationChanged();
+      });
+    }
 
     // Device tile click - navigate to device page or show more info
     this.shadowRoot.querySelectorAll('.device-tile').forEach(tile => {
@@ -2501,7 +2787,7 @@ class HueHomeScreen extends HTMLElement {
         if (device?.kind === 'tesla') {
           const dashboardPath = this._roomsIndex.dashboard_path || '/hue-ui';
           window.history.pushState(null, '', `${dashboardPath}/device/${deviceId}`);
-          window.dispatchEvent(new Event('location-changed'));
+          fireLocationChanged();
           return;
         }
 
@@ -2511,11 +2797,11 @@ class HueHomeScreen extends HTMLElement {
             ? device.path
             : `${dashboardPath}/${device.path}`;
           window.history.pushState(null, '', targetPath);
-          window.dispatchEvent(new Event('location-changed'));
+          fireLocationChanged();
         } else if (device?.device_file) {
           const dashboardPath = this._roomsIndex.dashboard_path || '/hue-ui';
           window.history.pushState(null, '', `${dashboardPath}/device/${deviceId}`);
-          window.dispatchEvent(new Event('location-changed'));
+          fireLocationChanged();
         } else {
           const entityId = tile.dataset.entity;
           if (entityId && this._hass?.states[entityId]) {
@@ -2822,14 +3108,22 @@ class HueHomeScreen extends HTMLElement {
 
     // Update device tiles
     this.shadowRoot.querySelectorAll('.device-tile').forEach(tile => {
+      const deviceId = tile.dataset.device;
+      const device = this._roomsIndex.devices?.find(d => d.id === deviceId);
+      if (device?.kind === 'tesla') {
+        updateTeslaTile(this._hass, tile, device);
+        return;
+      }
+      if (device?.kind === 'bitcoin') {
+        updateBitcoinTile(tile, this._bitcoinPriceState);
+        return;
+      }
+
       const entityId = tile.dataset.entity;
       if (!entityId) return;
 
       const state = this._hass?.states[entityId];
       if (!state) return;
-
-      const deviceId = tile.dataset.device;
-      const device = this._roomsIndex.devices?.find(d => d.id === deviceId);
       const isActive = this._isDeviceActive(device, state);
       const printerLike = !!(device?.progress_entity || device?.eta_entity || device?.entity === 'sensor.bambu_x1c_print_status');
       const printerAlert = this._isPrintAlertStatus(state.state);
@@ -2874,6 +3168,131 @@ class HueHomeScreen extends HTMLElement {
         }
       }
     });
+
+    const hasTeslaCountdown = !!this.shadowRoot.querySelector('.tesla-range[data-countdown-target]');
+    if (hasTeslaCountdown) {
+      this._ensureTeslaCountdownTimer();
+    } else {
+      this._clearTeslaCountdownTimer();
+    }
+
+    this._maybeAutoOpenDoorbell();
+  }
+
+  _maybeAutoOpenDoorbell() {
+    const entityId = String(this._roomsIndex?.doorbell_entity || '').trim();
+    const targetPath = String(this._roomsIndex?.doorbell_auto_open_path || '').trim();
+    if (!entityId || !targetPath) return;
+
+    // Only auto-navigate when the Home screen is visible.
+    const route = this._getRouteState();
+    const isPersonScreen = route.kind === 'person';
+    const isDeviceScreen = route.kind === 'device';
+    if (isPersonScreen || isDeviceScreen) return;
+
+    const state = this._hass?.states?.[entityId];
+    const isOn = state?.state === 'on';
+    if (this._doorbellLastOn == null) {
+      this._doorbellLastOn = isOn;
+      return;
+    }
+
+    // Rising edge detection with cooldown.
+    const cooldownMs = Math.max(5000, Number(this._roomsIndex?.doorbell_auto_open_cooldown_ms || 45000));
+    if (!this._doorbellLastOn && isOn) {
+      const now = Date.now();
+      if (now - (this._doorbellLastAutoOpenAt || 0) >= cooldownMs) {
+        this._doorbellLastAutoOpenAt = now;
+        const dashboardPath = this._roomsIndex?.dashboard_path || '/hue-ui';
+        const next = targetPath.startsWith('/') ? targetPath : `${dashboardPath}/${targetPath}`;
+        window.history.pushState(null, '', next);
+        fireLocationChanged();
+      }
+    }
+
+    this._doorbellLastOn = isOn;
+  }
+
+  _ensureTeslaCountdownTimer() {
+    if (this._teslaCountdownTimer) return;
+    this._teslaCountdownTimer = setInterval(() => this._tickTeslaCountdown(), 1000);
+    this._tickTeslaCountdown();
+  }
+
+  _clearTeslaCountdownTimer() {
+    if (!this._teslaCountdownTimer) return;
+    clearInterval(this._teslaCountdownTimer);
+    this._teslaCountdownTimer = null;
+  }
+
+  _tickTeslaCountdown() {
+    if (!this.shadowRoot) return;
+    const els = Array.from(this.shadowRoot.querySelectorAll('.tesla-range[data-countdown-target]'));
+    if (els.length === 0) {
+      this._clearTeslaCountdownTimer();
+      return;
+    }
+
+    const now = Date.now();
+    const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
+    for (const el of els) {
+      const target = Number(el.dataset.countdownTarget);
+      if (!Number.isFinite(target) || target <= 0) continue;
+      const remaining = Math.max(0, Math.floor((target - now) / 1000));
+      const hh = Math.floor(remaining / 3600);
+      const mm = Math.floor((remaining % 3600) / 60);
+      const ss = remaining % 60;
+      el.textContent = `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+    }
+  }
+
+  // ===== Bitcoin (CoinGecko) =====
+
+  _ensureBitcoinPriceTimer() {
+    const devices = this._roomsIndex?.devices || [];
+    const bitcoinDevice = devices.find((d) => d?.kind === 'bitcoin');
+    if (!bitcoinDevice) {
+      this._clearBitcoinPriceTimer();
+      return;
+    }
+
+    if (this._bitcoinPriceTimer) return;
+
+    const vs = String(bitcoinDevice.vs_currency || 'usd').toLowerCase();
+    void this._refreshBitcoinPrice(vs);
+    this._bitcoinPriceTimer = setInterval(() => {
+      void this._refreshBitcoinPrice(vs);
+    }, 60 * 1000);
+  }
+
+  _clearBitcoinPriceTimer() {
+    if (!this._bitcoinPriceTimer) return;
+    clearInterval(this._bitcoinPriceTimer);
+    this._bitcoinPriceTimer = null;
+  }
+
+  async _refreshBitcoinPrice(vsCurrency = 'usd') {
+    if (this._bitcoinPriceInflight) return;
+    const now = Date.now();
+    if (now - (this._bitcoinPriceLastFetchAt || 0) < 8000) return;
+    this._bitcoinPriceLastFetchAt = now;
+
+    this._bitcoinPriceInflight = true;
+    try {
+      this._bitcoinPriceState = await fetchBtcPrice({ vsCurrency });
+      this._updateBitcoinTiles();
+    } catch (e) {
+      console.warn('[HueHomeScreen] Bitcoin price fetch failed:', e);
+    } finally {
+      this._bitcoinPriceInflight = false;
+    }
+  }
+
+  _updateBitcoinTiles() {
+    const tiles = Array.from(this.shadowRoot?.querySelectorAll('.bitcoin-tile[data-kind="bitcoin"]') || []);
+    for (const tile of tiles) {
+      updateBitcoinTile(tile, this._bitcoinPriceState);
+    }
   }
 
   _getPersonStateClass(personState) {

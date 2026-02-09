@@ -6,6 +6,10 @@ Important, user-visible changes only. See commit history for full detail.
 
 - Home: add Tesla (vehicle) device kind with Hue-styled tile + Tesla-style detail screen (battery/charging/range + key controls).
 - Home: add /device/<id> routing so device tiles can open in-app pages (used for Tesla).
+- Home/Rooms: add Bitcoin tile (BTC/USD) and Bitcoin room widget (12h chart + Gemini-generated report on enter).
+- Home: add News section (5 headlines + Gemini summaries, local-first and filters out wars/deaths/negative items).
+- Home/Rooms: tap the Home weather widget to open a new Weather room (expanded banner + Gemini weather report + clothing advice).
+- Home: Nieuws is now a device tile that opens a News room (10 items: 5 local + 5 national) with animated typing, links, and copy buttons.
 
 - Home: fixed intermittent disappearance of people/weather widgets after returning to Home (route change + stale header refs).
 - Rooms: camera cards prefer live MJPEG stream, keep tokens fresh, and fall back to snapshot polling to prevent flashing/broken image loops.

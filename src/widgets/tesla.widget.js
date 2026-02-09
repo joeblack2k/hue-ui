@@ -4,7 +4,7 @@
  * Battery bar (color-coded), SOC %, range, status, charging/driving animations.
  */
 
-import { escapeHtml } from '../ui/helpers2.js?v=3.1.47';
+import { escapeHtml } from '../ui/helpers2.js?v=3.1.51';
 
 /**
  * Render a Tesla device tile for the home screen
@@ -16,50 +16,123 @@ export function renderTeslaTile(hass, device) {
   if (!device || !hass) return '';
 
   const entities = discoverTeslaTileEntities(hass, device);
-  const state = entities.status ? hass.states?.[entities.status] : null;
+  const statusState = entities.status ? hass.states?.[entities.status] : null;
 
   const batteryState = entities.battery ? hass.states?.[entities.battery] : null;
   const rangeState = entities.range ? hass.states?.[entities.range] : null;
+  const shiftState = entities.shift_state ? hass.states?.[entities.shift_state] : null;
+  const chargingState = entities.charging ? hass.states?.[entities.charging] : null;
+  const timeToFullState = entities.time_to_full ? hass.states?.[entities.time_to_full] : null;
+  const sentryState = entities.sentry_mode ? hass.states?.[entities.sentry_mode] : null;
 
   const soc = parseSoc(batteryState);
   const rangeKm = parseRange(rangeState);
   const speed = parseSpeed(hass.states?.[entities.speed]);
-  const statusText = formatTeslaStatus({
-    statusState: state,
-    chargingState: hass.states?.[entities.charging],
-    shiftState: hass.states?.[entities.shift_state],
-    speed,
-  });
-  const isCharging = isTeslaCharging(hass.states?.[entities.charging], state);
-  const isDriving = isTeslaDriving(hass.states?.[entities.shift_state], speed, state);
+  const isCharging = isTeslaCharging(chargingState, statusState);
+  const countdownTargetMs = isCharging ? parseChargeTargetMs(timeToFullState) : null;
+  const shiftLabel = isCharging ? 'Opladen' : formatShiftLabelNl(shiftState?.state, statusState?.state);
+  const showSpeed = Number.isFinite(speed) && speed !== null && speed >= 1;
+  const speedLabel = showSpeed ? `${Math.round(speed)} km/u` : '0 km/u';
+  const isDriving = isTeslaDriving(shiftState, speed, statusState);
   const barColor = getBatteryBarColor(soc);
-  const vehicleName = device.name || state?.attributes?.friendly_name || entities.nameFromState || 'Tesla';
+  const vehicleName = device.name || statusState?.attributes?.friendly_name || entities.nameFromState || 'Tesla';
+  const sentryOn = String(sentryState?.state || '').toLowerCase() === 'on';
 
   const chargingClass = isCharging ? 'tesla-charging' : '';
   const drivingClass = isDriving ? 'tesla-driving' : '';
+  const sentryClass = sentryOn ? 'tesla-sentry-on' : '';
+  const rangeText = (isCharging && countdownTargetMs)
+    ? formatCountdownHhMmSs(Math.max(0, Math.floor((countdownTargetMs - Date.now()) / 1000)))
+    : (rangeKm !== null ? rangeKm + ' km' : '--');
+  const countdownAttr = (isCharging && countdownTargetMs) ? ` data-countdown-target="${countdownTargetMs}"` : '';
 
   return `
-    <div class="device-tile tesla-tile ${chargingClass} ${drivingClass}"
+    <div class="device-tile tesla-tile ${chargingClass} ${drivingClass} ${sentryClass}"
          data-device="${escapeHtml(device.id)}"
          data-entity="${escapeHtml(entities.status || '')}">
+      <div class="tesla-sentry-dot" aria-hidden="true"></div>
       <div class="device-header">
         <div class="device-icon-container">
-          <ha-icon class="device-icon" icon="${escapeHtml(device.icon || 'mdi:car-electric')}"></ha-icon>
+         <ha-icon class="device-icon" icon="${escapeHtml(device.icon || 'mdi:car-electric')}"></ha-icon>
         </div>
       </div>
       <div class="device-name">${escapeHtml(vehicleName)}</div>
-      <div class="device-status">${escapeHtml(statusText)}</div>
+      <div class="tesla-drive-row">
+        <span class="tesla-shift">${escapeHtml(shiftLabel)}</span>
+        <span class="tesla-speed ${showSpeed ? '' : 'is-hidden'}">${escapeHtml(speedLabel)}</span>
+      </div>
       <div class="tesla-battery-section">
         <div class="tesla-battery-track">
           <div class="tesla-battery-fill" style="width:${soc}%;background:${barColor};"></div>
         </div>
         <div class="tesla-battery-legend">
           <span class="tesla-soc">${soc}%</span>
-          <span class="tesla-range">${rangeKm !== null ? rangeKm + ' km' : '--'}</span>
+          <span class="tesla-range"${countdownAttr}>${escapeHtml(rangeText)}</span>
         </div>
       </div>
     </div>
   `;
+}
+
+export function updateTeslaTile(hass, tileEl, device) {
+  if (!hass || !tileEl || !device) return;
+
+  const entities = discoverTeslaTileEntities(hass, device);
+
+  const statusState = entities.status ? hass.states?.[entities.status] : null;
+  const batteryState = entities.battery ? hass.states?.[entities.battery] : null;
+  const rangeState = entities.range ? hass.states?.[entities.range] : null;
+  const shiftState = entities.shift_state ? hass.states?.[entities.shift_state] : null;
+  const chargingState = entities.charging ? hass.states?.[entities.charging] : null;
+  const timeToFullState = entities.time_to_full ? hass.states?.[entities.time_to_full] : null;
+  const sentryState = entities.sentry_mode ? hass.states?.[entities.sentry_mode] : null;
+
+  const soc = parseSoc(batteryState);
+  const rangeKm = parseRange(rangeState);
+  const speed = parseSpeed(hass.states?.[entities.speed]);
+  const isCharging = isTeslaCharging(chargingState, statusState);
+  const countdownTargetMs = isCharging ? parseChargeTargetMs(timeToFullState) : null;
+  const shiftLabel = isCharging ? 'Opladen' : formatShiftLabelNl(shiftState?.state, statusState?.state);
+  const showSpeed = Number.isFinite(speed) && speed !== null && speed >= 1;
+  const speedLabel = showSpeed ? `${Math.round(speed)} km/u` : '0 km/u';
+  const isDriving = isTeslaDriving(shiftState, speed, statusState);
+  const barColor = getBatteryBarColor(soc);
+  const sentryOn = String(sentryState?.state || '').toLowerCase() === 'on';
+
+  tileEl.classList.toggle('tesla-charging', isCharging);
+  tileEl.classList.toggle('tesla-driving', isDriving);
+  tileEl.classList.toggle('tesla-sentry-on', sentryOn);
+
+  const shiftEl = tileEl.querySelector('.tesla-shift');
+  if (shiftEl) shiftEl.textContent = shiftLabel;
+
+  const speedEl = tileEl.querySelector('.tesla-speed');
+  if (speedEl) {
+    speedEl.textContent = speedLabel;
+    speedEl.classList.toggle('is-hidden', !showSpeed);
+  }
+
+  const fillEl = tileEl.querySelector('.tesla-battery-fill');
+  if (fillEl) {
+    fillEl.style.width = `${soc}%`;
+    fillEl.style.background = barColor;
+  }
+
+  const socEl = tileEl.querySelector('.tesla-soc');
+  if (socEl) socEl.textContent = `${soc}%`;
+
+  const rangeEl = tileEl.querySelector('.tesla-range');
+  if (rangeEl) {
+    if (isCharging && countdownTargetMs) {
+      rangeEl.dataset.countdownTarget = String(countdownTargetMs);
+      rangeEl.textContent = formatCountdownHhMmSs(
+        Math.max(0, Math.floor((countdownTargetMs - Date.now()) / 1000))
+      );
+    } else {
+      delete rangeEl.dataset.countdownTarget;
+      rangeEl.textContent = rangeKm !== null ? `${rangeKm} km` : '--';
+    }
+  }
 }
 
 /**
@@ -67,7 +140,38 @@ export function renderTeslaTile(hass, device) {
  */
 export const TESLA_TILE_CSS = `
   .tesla-tile {
+    position: relative;
     min-height: 148px;
+  }
+
+  /* Defensive: if a generic device tile status line ever sneaks into a Tesla tile,
+     hide it so we only show shift/speed + battery UI. */
+  .tesla-tile .device-status {
+    display: none !important;
+  }
+
+  .tesla-tile .tesla-drive-row {
+    font-size: var(--hue-font-size-sm);
+    color: var(--hue-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .tesla-tile .tesla-shift {
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tesla-tile .tesla-speed {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .tesla-tile .tesla-speed.is-hidden {
+    visibility: hidden;
   }
 
   .tesla-battery-section {
@@ -92,6 +196,14 @@ export const TESLA_TILE_CSS = `
     border-radius: inherit;
     transition: width 300ms ease;
     box-shadow: 0 0 8px rgba(100, 255, 130, 0.35);
+  }
+
+  .tesla-tile.tesla-charging .tesla-battery-fill {
+    background: linear-gradient(90deg, #2dd15a 0%, #7cff95 100%) !important;
+    animation: teslaBatteryPulse 1.8s ease-in-out infinite;
+    box-shadow:
+      0 0 10px rgba(67, 255, 130, 0.55),
+      0 0 18px rgba(67, 255, 130, 0.25);
   }
 
   .tesla-battery-legend {
@@ -123,6 +235,29 @@ export const TESLA_TILE_CSS = `
     animation: teslaDriveWiggle 1.2s ease-in-out infinite;
   }
 
+  .tesla-sentry-dot {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 80, 80, 0.0);
+    opacity: 0;
+    transform: scale(0.6);
+    pointer-events: none;
+  }
+
+  .tesla-tile.tesla-sentry-on .tesla-sentry-dot {
+    opacity: 1;
+    transform: scale(1);
+    background: #ff4242;
+    box-shadow:
+      0 0 10px rgba(255, 66, 66, 0.85),
+      0 0 20px rgba(255, 66, 66, 0.35);
+    animation: teslaSentryPulse 1.25s ease-in-out infinite;
+  }
+
   @keyframes teslaChargeGlow {
     0%, 100% {
       box-shadow:
@@ -142,6 +277,36 @@ export const TESLA_TILE_CSS = `
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-1px); }
     75% { transform: translateX(1px); }
+  }
+
+  @keyframes teslaBatteryPulse {
+    0%, 100% {
+      filter: brightness(0.95);
+      transform: scaleY(1);
+      opacity: 0.92;
+    }
+    50% {
+      filter: brightness(1.08);
+      transform: scaleY(1.02);
+      opacity: 1;
+    }
+  }
+
+  @keyframes teslaSentryPulse {
+    0%, 100% {
+      transform: scale(0.92);
+      opacity: 0.78;
+      box-shadow:
+        0 0 10px rgba(255, 66, 66, 0.75),
+        0 0 18px rgba(255, 66, 66, 0.25);
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 1;
+      box-shadow:
+        0 0 14px rgba(255, 66, 66, 0.95),
+        0 0 28px rgba(255, 66, 66, 0.42);
+    }
   }
 `;
 
@@ -164,6 +329,58 @@ function parseSpeed(speedState) {
   const v = Number.parseFloat(speedState.state);
   if (!Number.isFinite(v)) return null;
   return v;
+}
+
+function formatCountdownHhMmSs(totalSeconds) {
+  const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hh = Math.floor(s / 3600).toString().padStart(2, '0');
+  const mm = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+  const ss = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function parseChargeTargetMs(timeToFullState) {
+  if (!timeToFullState) return null;
+
+  const raw = String(timeToFullState.state || '').trim();
+  if (!raw || raw === 'unknown' || raw === 'unavailable') return null;
+
+  const parsedDate = Date.parse(raw);
+  if (Number.isFinite(parsedDate)) return parsedDate;
+
+  const numeric = Number.parseFloat(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+
+  const unit = String(timeToFullState.attributes?.unit_of_measurement || '').toLowerCase().trim();
+  if (unit === 'h' || unit === 'hr' || unit === 'hrs' || unit === 'hour' || unit === 'hours') {
+    return Date.now() + numeric * 3600000;
+  }
+  if (unit === 'min' || unit === 'mins' || unit === 'minute' || unit === 'minutes') {
+    return Date.now() + numeric * 60000;
+  }
+  if (unit === 's' || unit === 'sec' || unit === 'secs' || unit === 'second' || unit === 'seconds') {
+    return Date.now() + numeric * 1000;
+  }
+
+  return null;
+}
+
+function formatShiftLabelNl(shiftValue, statusValue) {
+  const shift = String(shiftValue ?? '').trim().toLowerCase();
+  if (shift === 'p') return 'Geparkeerd';
+  if (shift === 'd') return 'Rijden';
+  if (shift === 'r') return 'Achteruit';
+  if (shift === 'n') return 'Neutraal';
+  if (shift && shift !== 'unknown' && shift !== 'unavailable') return shift.toUpperCase();
+
+  const status = String(statusValue ?? '').trim().toLowerCase();
+  if (status === 'charging') return 'Opladen';
+  if (status === 'driving') return 'Rijden';
+  if (status === 'online') return 'Geparkeerd';
+  if (status === 'asleep' || status === 'offline' || status === 'suspended') return 'Geparkeerd';
+  if (status === 'unavailable') return 'Onbeschikbaar';
+  if (status === 'unknown') return 'Onbekend';
+  return '--';
 }
 
 function formatTeslaStatus({ statusState, chargingState, shiftState, speed }) {
@@ -190,7 +407,7 @@ function formatTeslaStatus({ statusState, chargingState, shiftState, speed }) {
 
 function isTeslaCharging(chargingState, statusState) {
   const charging = String(chargingState?.state || '').toLowerCase();
-  if (charging === 'charging') return true;
+  if (charging === 'charging' || charging === 'starting') return true;
   return String(statusState?.state || '').toLowerCase() === 'charging';
 }
 
@@ -216,6 +433,8 @@ function discoverTeslaTileEntities(hass, device) {
     speed: device?.speed_entity || '',
     shift_state: device?.shift_state_entity || '',
     charging: device?.charging_entity || '',
+    time_to_full: device?.time_to_full_entity || '',
+    sentry_mode: device?.sentry_entity || '',
     nameFromState: '',
   };
 
@@ -235,11 +454,15 @@ function discoverTeslaTileEntities(hass, device) {
       result.speed = result.speed || `sensor.${configuredPrefix}_speed`;
       result.shift_state = result.shift_state || `sensor.${configuredPrefix}_shift_state`;
       result.charging = result.charging || `sensor.${configuredPrefix}_charging`;
+      result.time_to_full = result.time_to_full || `sensor.${configuredPrefix}_time_to_full_charge`;
+      result.sentry_mode = result.sentry_mode || `switch.${configuredPrefix}_sentry_mode`;
     }
   }
 
   // If explicitly configured, we're done.
-  if (result.battery && result.speed) return result;
+  if (result.battery && result.speed && result.shift_state && result.charging && result.time_to_full && result.sentry_mode) {
+    return result;
+  }
 
   // Build a per-vehicle prefix score from known Tessie-style entity IDs, e.g.:
   // sensor.anne_fleur_battery_level, sensor.anne_fleur_speed, sensor.anne_fleur_shift_state
@@ -251,7 +474,7 @@ function discoverTeslaTileEntities(hass, device) {
   };
 
   for (const eid of sensors) {
-    const m = /^sensor\.([a-z0-9_]+)_(battery_level|battery_range|speed|shift_state|charging)$/.exec(eid);
+    const m = /^sensor\.([a-z0-9_]+)_(battery_level|battery_range|speed|shift_state|charging|time_to_full_charge)$/.exec(eid);
     if (!m) continue;
     const prefix = m[1];
     const kind = m[2];
@@ -288,6 +511,9 @@ function discoverTeslaTileEntities(hass, device) {
   if (!result.speed && hass.states[pick('speed')]) result.speed = pick('speed');
   if (!result.shift_state && hass.states[pick('shift_state')]) result.shift_state = pick('shift_state');
   if (!result.charging && hass.states[pick('charging')]) result.charging = pick('charging');
+  if (!result.time_to_full && hass.states[pick('time_to_full_charge')]) result.time_to_full = pick('time_to_full_charge');
+  const sentrySwitch = `switch.${bestPrefix}_sentry_mode`;
+  if (!result.sentry_mode && hass.states[sentrySwitch]) result.sentry_mode = sentrySwitch;
 
   // Best-effort name from any discovered sensor.
   const anyState = hass.states[result.battery] || hass.states[result.speed] || hass.states[result.shift_state];
@@ -304,4 +530,4 @@ function discoverTeslaTileEntities(hass, device) {
   return result;
 }
 
-export default { renderTeslaTile, TESLA_TILE_CSS };
+export default { renderTeslaTile, updateTeslaTile, TESLA_TILE_CSS };

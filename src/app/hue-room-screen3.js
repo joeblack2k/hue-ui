@@ -14,15 +14,29 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.47';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.47';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t } from '../ui/helpers2.js?v=3.1.47';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.47';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.47';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.47';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.47';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.47';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.47';
+} from './config-loader3.js?v=3.1.51';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.51';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.51';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.51';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.51';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.51';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.51';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.51';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.51';
+import {
+  renderBitcoinSection,
+  fetchBtcPrice,
+  fetchBtcMarketChart,
+  fetchCryptoCompareNews,
+  slicePricesLastHours,
+  computePriceStats,
+  renderSparklineSvg,
+  formatCurrency,
+  formatPercent,
+  BITCOIN_SECTION_CSS,
+} from '../widgets/bitcoin.widget.js?v=3.1.57';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.67';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.75';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -565,6 +579,11 @@ const STYLES = `
     text-align: left;
     border: none;
     min-height: 124px;
+  }
+
+  .hue-action-tile.is-wide {
+    grid-column: span 2;
+    min-height: 92px;
   }
 
   .hue-action-tile .hue-tile-footer {
@@ -1245,6 +1264,10 @@ const STYLES = `
   * {
     -webkit-tap-highlight-color: transparent;
   }
+
+  ${BITCOIN_SECTION_CSS}
+  ${WEATHER_SECTION_CSS}
+  ${NEWS_ROOM_CSS}
 `;
 
 class HueRoomScreen extends HTMLElement {
@@ -1291,6 +1314,59 @@ class HueRoomScreen extends HTMLElement {
     this._lightControlCooldownUntil = 0;
     this._lightControlTimers = { brightness: null, color: null, temp: null };
     this._lightControlLastHaptic = { brightness: 0, color: 0, temp: 0 };
+
+    // Bitcoin room widget (CoinGecko chart + Gemini report)
+    this._bitcoinRunId = 0;
+    this._bitcoinAbortController = null;
+    this._bitcoinTypingTimer = null;
+    this._bitcoinLivePriceTimer = null;
+    this._bitcoinReportStarted = false;
+
+    // Weather room widget (banner + Gemini report)
+    this._weatherRunId = 0;
+    this._weatherAbortController = null;
+    this._weatherTypingTimer = null;
+    this._weatherReportStarted = false;
+
+    // News room widget (sources + Gemini summaries)
+    this._newsRunId = 0;
+    this._newsAbortController = null;
+    this._newsTypingTimers = [];
+    this._newsReportStarted = false;
+    this._newsHourlyTimer = null;
+    this._newsDailyTimer = null;
+    this._newsHydratedFromCache = false;
+    this._newsHourlyInFlight = false;
+    this._newsDailyInFlight = false;
+    this._newsBootstrapInFlight = false;
+  }
+
+  async _copyToClipboard(text) {
+    const s = String(text || '');
+    if (!s.trim()) return false;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(s);
+        return true;
+      }
+    } catch (_e) {
+      // fallback below
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = s;
+      ta.setAttribute('readonly', 'true');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.left = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (_e) {
+      return false;
+    }
   }
 
   setConfig(config) {
@@ -1299,9 +1375,13 @@ class HueRoomScreen extends HTMLElement {
   }
 
   connectedCallback() {
+    this._enterKioskMode();
     // Ensure listeners are present on reconnect (belt-and-suspenders)
     if (this._rendered) {
       this._attachEventListeners();
+      this._ensureBitcoinWidget({ reason: 'reconnect' });
+      this._ensureWeatherWidget({ reason: 'reconnect' });
+      this._ensureNewsWidget({ reason: 'reconnect' });
     }
   }
 
@@ -1463,48 +1543,57 @@ class HueRoomScreen extends HTMLElement {
     this._applyWidgetOverridesToDom();
     this._rendered = true;
     this._updateStates();
+    this._ensureBitcoinWidget({ reason: 'render' });
+    this._ensureWeatherWidget({ reason: 'render' });
+    this._ensureNewsWidget({ reason: 'render' });
   }
 
   // ===== Section Rendering =====
 
   _renderSections() {
     const sections = this._roomConfig.sections || [];
-    const lightingSection = sections.find((section) => section.type === 'lighting');
-    const climateSection = sections.find((section) => section.type === 'climate');
-    const cameraSections = sections.filter((section) => section.type === 'camera');
-    const devicesSection = sections.find((section) => section.type === 'devices');
-    const mediaPlayerSection = sections.find((section) => section.type === 'mediaplayers');
-    const actionSections = sections.filter((section) => section.type === 'actions');
-
     const blocks = [];
 
     if (this._roomConfig.scenes && this._roomConfig.scenes.length > 0) {
       blocks.push(this._renderScenesSection(this._roomConfig.scenes));
     }
 
-    if (lightingSection) {
-      blocks.push(this._renderLightingSection(lightingSection));
+    // Render sections in config order to allow rooms like "Voordeur" to put camera first.
+    for (const section of sections) {
+      if (!section || typeof section !== 'object') continue;
+      const type = String(section.type || '').trim().toLowerCase();
+      switch (type) {
+        case 'news':
+          blocks.push(this._renderNewsSection(section));
+          break;
+        case 'weather':
+          blocks.push(this._renderWeatherSection(section));
+          break;
+        case 'bitcoin':
+          blocks.push(this._renderBitcoinSection(section));
+          break;
+        case 'lighting':
+          blocks.push(this._renderLightingSection(section));
+          break;
+        case 'climate':
+          blocks.push(this._renderClimateSection(section));
+          break;
+        case 'camera':
+          blocks.push(this._renderCameraSection(section));
+          break;
+        case 'devices':
+          blocks.push(this._renderDevicesSection(section));
+          break;
+        case 'mediaplayers':
+          blocks.push(this._renderMediaPlayersSection(section));
+          break;
+        case 'actions':
+          blocks.push(this._renderActionsSection(section));
+          break;
+        default:
+          break;
+      }
     }
-
-    if (climateSection) {
-      blocks.push(this._renderClimateSection(climateSection));
-    }
-
-    cameraSections.forEach((section) => {
-      blocks.push(this._renderCameraSection(section));
-    });
-
-    if (devicesSection) {
-      blocks.push(this._renderDevicesSection(devicesSection));
-    }
-
-    if (mediaPlayerSection) {
-      blocks.push(this._renderMediaPlayersSection(mediaPlayerSection));
-    }
-
-    actionSections.forEach((section) => {
-      blocks.push(this._renderActionsSection(section));
-    });
 
     if (this._roomConfig.sensors && this._roomConfig.sensors.length > 0) {
       blocks.push(this._renderSensorsSection(this._roomConfig.sensors));
@@ -1522,6 +1611,48 @@ class HueRoomScreen extends HTMLElement {
         <div class="hue-scene-pager">
           ${renderScenesContent(this._hass, scenes)}
         </div>
+      </div>
+    `;
+  }
+
+  _renderBitcoinSection(section) {
+    const title = String(section?.title || 'Bitcoin').toUpperCase();
+    const content = renderBitcoinSection(section);
+    if (!content) return '';
+    return `
+      <div class="hue-section">
+        <div class="hue-section-header">
+          <span class="hue-section-title">${escapeHtml(t(title, title))}</span>
+        </div>
+        ${content}
+      </div>
+    `;
+  }
+
+  _renderWeatherSection(section) {
+    const title = String(section?.title || 'Weer').toUpperCase();
+    const content = renderWeatherSection(section);
+    if (!content) return '';
+    return `
+      <div class="hue-section">
+        <div class="hue-section-header">
+          <span class="hue-section-title">${escapeHtml(t(title, title))}</span>
+        </div>
+        ${content}
+      </div>
+    `;
+  }
+
+  _renderNewsSection(section) {
+    const title = String(section?.title || 'Nieuws').toUpperCase();
+    const content = renderNewsRoomSection(section);
+    if (!content) return '';
+    return `
+      <div class="hue-section">
+        <div class="hue-section-header">
+          <span class="hue-section-title">${escapeHtml(t(title, title))}</span>
+        </div>
+        ${content}
       </div>
     `;
   }
@@ -1613,6 +1744,9 @@ class HueRoomScreen extends HTMLElement {
     const refreshMs = Number.isFinite(Number(section.refresh_ms))
       ? Math.max(2000, Math.min(15000, Number(section.refresh_ms)))
       : 4500;
+    const eager = section.eager === true || section.fetch_priority === 'high';
+    const loadingAttr = eager ? 'eager' : 'lazy';
+    const fetchPriorityAttr = eager ? 'high' : 'auto';
 
     return `
       <div class="hue-section">
@@ -1625,7 +1759,8 @@ class HueRoomScreen extends HTMLElement {
               class="hue-camera-feed"
               src="${escapeHtml(this._withCacheBuster(snapshotUrl))}"
               alt="${escapeHtml(cameraName)}"
-              loading="lazy"
+              loading="${loadingAttr}"
+              fetchpriority="${fetchPriorityAttr}"
               data-live-src="${escapeHtml(streamUrl)}"
               data-snapshot-src="${escapeHtml(snapshotUrl)}"
               data-mode="snapshot"
@@ -1670,6 +1805,2075 @@ class HueRoomScreen extends HTMLElement {
         </div>
       </div>
     `;
+  }
+
+  // ===== Bitcoin (CoinGecko + Gemini) =====
+
+  _cancelBitcoinJobs({ resetReport = false } = {}) {
+    if (this._bitcoinAbortController) {
+      try { this._bitcoinAbortController.abort(); } catch (_e) { /* ignore */ }
+      this._bitcoinAbortController = null;
+    }
+    if (this._bitcoinTypingTimer) {
+      clearInterval(this._bitcoinTypingTimer);
+      this._bitcoinTypingTimer = null;
+    }
+    if (this._bitcoinLivePriceTimer) {
+      clearInterval(this._bitcoinLivePriceTimer);
+      this._bitcoinLivePriceTimer = null;
+    }
+    if (resetReport) {
+      this._bitcoinReportStarted = false;
+    }
+  }
+
+  _ensureBitcoinWidget({ reason = '' } = {}) {
+    const widget = this.shadowRoot?.querySelector('.btc-widget');
+    if (!widget) {
+      this._cancelBitcoinJobs({ resetReport: true });
+      return;
+    }
+
+    // Keep the live price fresh while this room is visible.
+    if (!this._bitcoinLivePriceTimer) {
+      const vs = String(widget.dataset.vs || 'usd').toLowerCase();
+      this._bitcoinLivePriceTimer = setInterval(() => {
+        void this._refreshBitcoinPriceOnly(widget, vs);
+      }, 60 * 1000);
+      void this._refreshBitcoinPriceOnly(widget, vs);
+    }
+
+    // Reports are prefetched in the background by Home Assistant automations and stored in /local/hue-ui/data/.
+    // We render instantly (no typing animation) and never call Gemini from the browser.
+    if (this._bitcoinReportStarted) return;
+    this._bitcoinReportStarted = true;
+    const mins = this._minutesSinceLocalMidnight();
+    const slot = (mins >= (16 * 60 + 30)) ? 'pm' : 'am';
+    const runId = ++this._bitcoinRunId;
+    widget.dataset.btcSlot = slot;
+    void this._loadBitcoinPrefetch(widget, runId, { reason, slot });
+  }
+
+  async _loadBitcoinPrefetch(widget, runId, { reason = '', slot = 'am' } = {}) {
+    const reportEl = widget.querySelector('[data-role="btc-report"]');
+    const caretEl = widget.querySelector('[data-role="btc-caret"]');
+    const statusEl = widget.querySelector('[data-role="btc-report-status"]');
+    const loadingEl = widget.querySelector('[data-role="btc-loading"]');
+    if (caretEl) caretEl.style.display = 'none';
+    if (reportEl) reportEl.textContent = '';
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    if (statusEl) statusEl.textContent = `(${reason || 'open'}) Rapport laden…`;
+
+    try {
+      const file = slot === 'pm' ? 'btc_pm.json' : 'btc_am.json';
+      const data = await this._fetchLocalJson(`/local/hue-ui/data/${file}`, { timeoutMs: 3000 });
+      if (runId !== this._bitcoinRunId) return;
+
+      const text = typeof data?.text === 'string' ? data.text : (typeof data?.report === 'string' ? data.report : '');
+      const ts = Number(data?.ts);
+      if (statusEl) {
+        const when = Number.isFinite(ts) ? this._formatHhMm(ts) : this._formatHhMm(Date.now());
+        statusEl.textContent = `Samenvatting (${slot === 'pm' ? 'middag' : 'ochtend'}) • bijgewerkt ${when}`;
+      }
+      if (reportEl) reportEl.textContent = this._normalizeBitcoinReportText(text || '') || 'Nog geen Bitcoin-rapport beschikbaar.';
+    } catch (e) {
+      if (runId !== this._bitcoinRunId) return;
+      if (statusEl) statusEl.textContent = 'Geen prefetched rapport gevonden.';
+      if (reportEl) reportEl.textContent = 'Nog geen Bitcoin-rapport beschikbaar.';
+      console.warn('[HueRoomScreen] BTC prefetch load failed:', e);
+    } finally {
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+      if (caretEl) caretEl.style.display = 'none';
+    }
+  }
+
+  _formatHhMm(tsMs) {
+    if (!Number.isFinite(Number(tsMs))) return '--:--';
+    const d = new Date(Number(tsMs));
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  _samplePriceTimeline(points, currency, maxLines = 13) {
+    const list = Array.isArray(points) ? points : [];
+    if (list.length === 0) return [];
+    const max = Math.max(2, Math.min(maxLines, list.length));
+    const step = Math.max(1, Math.floor(list.length / max));
+    const out = [];
+    for (let i = 0; i < list.length; i += step) {
+      const [ts, price] = list[i];
+      out.push(`${this._formatHhMm(ts)}  ${formatCurrency(price, currency, 0)}`);
+    }
+    const last = list[list.length - 1];
+    const lastLine = `${this._formatHhMm(last[0])}  ${formatCurrency(last[1], currency, 0)}`;
+    if (out[out.length - 1] !== lastLine) out.push(lastLine);
+    return out.slice(0, maxLines);
+  }
+
+  async _runBitcoinFlow(widget, runId, reason) {
+    const vs = String(widget?.dataset?.vs || 'usd').toLowerCase();
+    const hours = Number(widget?.dataset?.hours || 12);
+    const safeHours = Number.isFinite(hours) ? Math.max(1, Math.min(24, Math.round(hours))) : 12;
+    const agentIdHint = String(widget?.dataset?.agentId || '').trim();
+
+    const reportEl = widget.querySelector('[data-role="btc-report"]');
+    const caretEl = widget.querySelector('[data-role="btc-caret"]');
+    const statusEl = widget.querySelector('[data-role="btc-report-status"]');
+    const loadingEl = widget.querySelector('[data-role="btc-loading"]');
+    if (caretEl) caretEl.style.display = '';
+    if (reportEl) reportEl.textContent = '';
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    if (statusEl) statusEl.textContent = `(${reason || 'enter'}) Fetching BTC data...`;
+
+    // Abort any previous in-flight network calls.
+    if (this._bitcoinAbortController) {
+      try { this._bitcoinAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    const controller = new AbortController();
+    this._bitcoinAbortController = controller;
+
+    try {
+      const [priceState, chart] = await Promise.all([
+        fetchBtcPrice({ vsCurrency: vs, signal: controller.signal }),
+        fetchBtcMarketChart({ vsCurrency: vs, days: 1, signal: controller.signal }),
+      ]);
+      if (runId !== this._bitcoinRunId) return;
+
+      const sliced = slicePricesLastHours(chart.prices, safeHours, Date.now());
+      const stats = computePriceStats(sliced);
+      const currency = (priceState?.currency || vs.toUpperCase()).toUpperCase();
+
+      this._updateBitcoinWidgetUi(widget, { priceState, sliced, stats, currency });
+
+      if (statusEl) statusEl.textContent = 'Gemini verzamelt bronnen en schrijft het rapport...';
+      const reportText = await this._generateBitcoinReport({
+        stats,
+        points: sliced,
+        hours: safeHours,
+        currency,
+        agentIdHint,
+      });
+      if (runId !== this._bitcoinRunId) return;
+
+      if (!reportText) {
+        if (statusEl) statusEl.textContent = 'Gemini gaf geen tekst terug.';
+        if (caretEl) caretEl.style.display = 'none';
+        if (loadingEl) loadingEl.classList.remove('is-visible');
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = `Rapport klaar om ${this._formatHhMm(Date.now())}`;
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+      this._typeBitcoinReport(reportEl, caretEl, reportText, runId);
+
+      // Cache the generated report for this slot.
+      const slot = String(widget?.dataset?.btcSlot || '').trim();
+      if (slot === 'am' || slot === 'pm') {
+        const cacheKey = 'hue-ui-cache:btc:v1';
+        const cache = this._lsGetJson(cacheKey) || {};
+        cache[slot] = { ts: Date.now(), text: String(reportText || '') };
+        this._lsSetJson(cacheKey, cache);
+      }
+    } catch (e) {
+      if (runId !== this._bitcoinRunId) return;
+      console.warn('[HueRoomScreen] Bitcoin widget failed:', e);
+      if (statusEl) statusEl.textContent = `Mislukt: ${String(e?.message || e)}`;
+      if (reportEl) reportEl.textContent = 'Kon geen rapport maken.';
+      if (caretEl) caretEl.style.display = 'none';
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+    } finally {
+      if (this._bitcoinAbortController === controller) {
+        this._bitcoinAbortController = null;
+      }
+    }
+  }
+
+  _updateBitcoinWidgetUi(widget, { priceState, sliced, stats, currency }) {
+    if (!widget) return;
+    const priceEl = widget.querySelector('[data-role="btc-price"]');
+    const changeEl = widget.querySelector('[data-role="btc-change"]');
+    const updatedEl = widget.querySelector('[data-role="btc-updated"]');
+    const chartEl = widget.querySelector('[data-role="btc-chart"]');
+    const lowEl = widget.querySelector('[data-role="btc-low"]');
+    const highEl = widget.querySelector('[data-role="btc-high"]');
+
+    const price = Number.isFinite(priceState?.price) ? priceState.price : stats?.end;
+    if (priceEl) priceEl.textContent = formatCurrency(price, currency, 0);
+
+    const changePct = stats?.changePct;
+    if (changeEl) {
+      changeEl.textContent = Number.isFinite(changePct) ? formatPercent(changePct, 2) : '--';
+      changeEl.classList.toggle('is-up', Number.isFinite(changePct) && changePct >= 0);
+      changeEl.classList.toggle('is-down', Number.isFinite(changePct) && changePct < 0);
+    }
+
+    const updatedAt = Number.isFinite(priceState?.updatedAt) ? priceState.updatedAt : stats?.endTs;
+    if (updatedEl) updatedEl.textContent = `Updated ${this._formatHhMm(updatedAt)}`;
+
+    if (chartEl) {
+      chartEl.innerHTML = renderSparklineSvg(sliced, { width: 100, height: 44, padding: 3 });
+    }
+
+    if (lowEl) {
+      const min = stats?.min;
+      lowEl.textContent = Number.isFinite(min)
+        ? `Low ${formatCurrency(min, currency, 0)} @ ${this._formatHhMm(stats?.minTs)}`
+        : 'Low --';
+    }
+    if (highEl) {
+      const max = stats?.max;
+      highEl.textContent = Number.isFinite(max)
+        ? `High ${formatCurrency(max, currency, 0)} @ ${this._formatHhMm(stats?.maxTs)}`
+        : 'High --';
+    }
+  }
+
+  async _refreshBitcoinPriceOnly(widget, vs) {
+    if (!widget || !this.shadowRoot?.contains(widget)) return;
+    try {
+      const priceState = await fetchBtcPrice({ vsCurrency: vs });
+      const currency = (priceState?.currency || vs.toUpperCase()).toUpperCase();
+      const priceEl = widget.querySelector('[data-role="btc-price"]');
+      const updatedEl = widget.querySelector('[data-role="btc-updated"]');
+      if (priceEl && Number.isFinite(priceState?.price)) {
+        priceEl.textContent = formatCurrency(priceState.price, currency, 0);
+      }
+      if (updatedEl && Number.isFinite(priceState?.updatedAt)) {
+        updatedEl.textContent = `Updated ${this._formatHhMm(priceState.updatedAt)}`;
+      }
+    } catch (e) {
+      // Soft-fail; don't spam UI.
+      console.warn('[HueRoomScreen] Bitcoin price refresh failed:', e);
+    }
+  }
+
+  async _pickConversationAgentId(agentIdHint = '') {
+    const hint = String(agentIdHint || '').trim();
+    if (hint) return hint;
+
+    // Prefer the known HA Gemini agent (Google Generative AI integration).
+    // Listing agents via WS is not always available, and auto-picking can land on the
+    // Home Assistant agent (which may interpret URLs/words as device names).
+    const hass = this._hass;
+    const geminiAgentId = 'conversation.google_ai_conversation';
+    if (hass?.states?.[geminiAgentId]) return geminiAgentId;
+    return '';
+  }
+
+  async _fetchFearGreedIndex() {
+    try {
+      const res = await fetch('https://api.alternative.me/fng/?limit=1&format=json', { method: 'GET', mode: 'cors' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const row = Array.isArray(data?.data) ? data.data[0] : null;
+      const value = Number(row?.value);
+      const classification = String(row?.value_classification || '').trim();
+      const tsSec = Number(row?.timestamp);
+      return {
+        value: Number.isFinite(value) ? value : null,
+        classification,
+        timestamp: Number.isFinite(tsSec) ? tsSec * 1000 : null,
+        source: 'Alternative (Fear & Greed)',
+      };
+    } catch (e) {
+      console.warn('[HueRoomScreen] Fear & Greed fetch failed:', e);
+      return null;
+    }
+  }
+
+  _stripConversationWrapping(text) {
+    let s = String(text || '').trim();
+    if (!s) return '';
+    // Remove common markdown fences that some agents add even when asked not to.
+    s = s.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+    // Some agents prefix with "JSON:" etc.
+    s = s.replace(/^\s*json\s*:\s*/i, '');
+    return s.trim();
+  }
+
+  _safeLocalStorage() {
+    try { return window?.localStorage || null; } catch (_e) { return null; }
+  }
+
+  _lsGetJson(key) {
+    const storage = this._safeLocalStorage();
+    if (!storage) return null;
+    try {
+      const raw = storage.getItem(String(key));
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  _lsSetJson(key, value) {
+    const storage = this._safeLocalStorage();
+    if (!storage) return false;
+    try {
+      storage.setItem(String(key), JSON.stringify(value));
+      return true;
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  _startOfLocalDayMs(tsMs) {
+    const d = new Date(Number(tsMs) || Date.now());
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  _minutesSinceLocalMidnight() {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
+
+  _safeJsonParseObject(text) {
+    const s = this._stripConversationWrapping(text);
+    if (!s) return null;
+    // Try full parse first.
+    try {
+      const obj = JSON.parse(s);
+      return (obj && typeof obj === 'object') ? obj : null;
+    } catch (_e) {
+      // Fallback: extract the first {...} block.
+      const a = s.indexOf('{');
+      const b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) {
+        try {
+          const obj = JSON.parse(s.slice(a, b + 1));
+          return (obj && typeof obj === 'object') ? obj : null;
+        } catch (_e2) {
+          return null;
+        }
+      }
+      return null;
+    }
+  }
+
+  _sanitizeBitcoinReportText(s) {
+    let t = String(s || '');
+    if (!t.trim()) return '';
+    // Kill URLs and URL-like fragments. Covers "https://", "http://", "https//" (missing colon), "www.".
+    t = t.replace(/\bhttps?:\/\/\S+/gi, '');
+    t = t.replace(/\bhttps\/\/\S+/gi, '');
+    t = t.replace(/\bwww\.\S+/gi, '');
+    // Remove (domain.tld/...) even without scheme.
+    t = t.replace(/\((?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^)]*)?\)/gi, '');
+    // Remove bare domains like "example.com" (avoid "links" in the rendered text).
+    t = t.replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi, '');
+    // Remove markdown-ish markers.
+    t = t.replace(/\*\*/g, '');
+    t = t.replace(/`{1,3}/g, '');
+    t = t.replace(/^\s*#+\s*/gm, '');
+    // Normalize bullets (we will add bullets ourselves).
+    t = t.replace(/^\s*[•\*\-]\s+/gm, '');
+    // Trim spaces, collapse internal runs.
+    t = t.split('\n').map((line) => line.replace(/\s+$/g, '')).join('\n');
+    t = t.replace(/[ \t]{2,}/g, ' ');
+    t = t.replace(/\(\s*\)/g, '');
+    return t.trim();
+  }
+
+  _formatBitcoinReportFromJson(obj) {
+    const headline = this._sanitizeBitcoinReportText(obj?.headline).replace(/\n+/g, ' ').trim();
+    const lead = this._sanitizeBitcoinReportText(obj?.lead).replace(/\n{3,}/g, '\n\n').trim();
+    const wat = this._sanitizeBitcoinReportText(obj?.wat_speelde_er).replace(/\n{3,}/g, '\n\n').trim();
+    const vooruitblik = this._sanitizeBitcoinReportText(obj?.vooruitblik).replace(/\n{3,}/g, '\n\n').trim();
+    const disclaimer = this._sanitizeBitcoinReportText(obj?.disclaimer).replace(/\n+/g, ' ').trim();
+
+    const cijfersRaw = Array.isArray(obj?.in_cijfers) ? obj.in_cijfers : [];
+    const cijfers = cijfersRaw
+      .filter((v) => typeof v === 'string' && v.trim())
+      .map((v) => this._sanitizeBitcoinReportText(v).replace(/\n+/g, ' ').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    const out = [];
+    if (headline) out.push(headline);
+    if (lead) { out.push(''); out.push(lead); }
+    out.push('');
+    out.push('In cijfers');
+    if (cijfers.length) {
+      for (const c of cijfers) out.push(`• ${c}`);
+    } else {
+      out.push('• --');
+    }
+    if (wat) { out.push(''); out.push(wat); }
+    if (vooruitblik) { out.push(''); out.push(vooruitblik); }
+    if (disclaimer) { out.push(''); out.push(disclaimer); }
+    return out.join('\n').trim();
+  }
+
+  async _generateBitcoinReport({ stats, points, hours, currency, agentIdHint }) {
+    if (!stats || !Array.isArray(points) || points.length < 2) {
+      return 'Not enough price data to generate a report.';
+    }
+
+    const startTime = this._formatHhMm(stats.startTs);
+    const endTime = this._formatHhMm(stats.endTs);
+    const rangePct = (Number.isFinite(stats.start) && stats.start !== 0 && Number.isFinite(stats.max) && Number.isFinite(stats.min))
+      ? ((stats.max - stats.min) / stats.start) * 100
+      : null;
+
+    const localNow = new Date();
+    const localDay = localNow.toLocaleDateString('nl-NL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const localTime = localNow.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    const dayNote = `Het is nu ${localDay} ${localTime} (Europe/Amsterdam).`;
+
+    // Internet sources (headlines + sentiment proxy).
+    const [news, fng] = await Promise.all([
+      fetchCryptoCompareNews({ lang: 'EN', hours, maxItems: 8 }),
+      this._fetchFearGreedIndex(),
+    ]);
+
+    const newsItems = (news || []).map((n) => ({
+      when: n?.published_on ? this._formatHhMm(n.published_on) : '--:--',
+      source: String(n?.source || 'Bron').trim(),
+      title: String(n?.title || '').trim(),
+    })).filter((n) => n.title);
+
+    const agentId = await this._pickConversationAgentId(agentIdHint);
+
+    const context = {
+      now_local: `${localDay} ${localTime}`,
+      timezone_note: 'Europe/Amsterdam',
+      currency: String(currency || 'USD'),
+      window_hours: Number(hours) || 12,
+      price: {
+        start_time: startTime,
+        end_time: endTime,
+        start: formatCurrency(stats.start, currency, 0),
+        end: formatCurrency(stats.end, currency, 0),
+        change_pct: Number.isFinite(stats.changePct) ? formatPercent(stats.changePct, 2) : '--',
+        low: formatCurrency(stats.min, currency, 0),
+        low_time: this._formatHhMm(stats.minTs),
+        high: formatCurrency(stats.max, currency, 0),
+        high_time: this._formatHhMm(stats.maxTs),
+        range_pct: Number.isFinite(rangePct) ? formatPercent(rangePct, 2) : '--',
+      },
+      sentiment: (fng && (fng.value != null || fng.classification))
+        ? { fear_greed_value: fng.value != null ? fng.value : null, classification: fng.classification || '' }
+        : null,
+      headlines: newsItems.slice(0, 4),
+      sources_note: 'Koppen: CryptoCompare. Sentiment: Alternative (Fear & Greed).',
+    };
+
+    const prompt = [
+      `Je bent redacteur van een krant. Schrijf een kort Bitcoin-bericht (BTC/${currency}) in het Nederlands.`,
+      `Periode: laatste ${hours} uur + verwachting komende 12 uur.`,
+      dayNote,
+      '',
+      'Output-regels (strict):',
+      '- Return ALLEEN geldige JSON. Geen markdown. Geen extra tekst.',
+      '- Geen links, geen URLs, geen domeinen. Dus ook geen "(https...)" of "www...".',
+      '- Geen bronlijst. Je mag bronnen wel als NAAM noemen in een zin (bijv. "CryptoCompare", "CoinDesk"), zonder link.',
+      '- Toon "In cijfers" als array met MAX 3 korte items (geen bullet tekens in de strings).',
+      '- Verder alleen alinea’s (korte paragrafen, goed leesbaar).',
+      '- Wees eerlijk en nuchter: geen absolute claims. Als het onzeker is, benoem dat.',
+      '- Context zondag: Bitcoin handelt 24/7, maar weekend-liquiditeit kan anders zijn. Benoem dat traditionele markten pas maandag weer open zijn.',
+      '- Toon ook risico’s en wat tegen kan vallen (neutraal, serieuze belegger; geen hype/“moon” taal).',
+      '',
+      'Schema van de JSON (exact deze keys):',
+      '{',
+      '  "headline": "1 zin",',
+      '  "lead": "2 zinnen",',
+      '  "in_cijfers": ["item1", "item2", "item3"],',
+      '  "wat_speelde_er": "1 alinea",',
+      '  "vooruitblik": "1 alinea",',
+      '  "disclaimer": "1 zin"',
+      '}',
+      '',
+      'Context (gebruik dit, maar herhaal geen lijsten/ruwe data):',
+      JSON.stringify(context),
+    ].join('\n');
+
+    const result = await this._conversationProcess(prompt, agentId);
+    const raw = this._extractConversationText(result);
+    const obj = this._safeJsonParseObject(raw);
+    if (obj) {
+      return this._formatBitcoinReportFromJson(obj);
+    }
+    return this._normalizeBitcoinReportText(raw);
+  }
+
+  async _conversationProcess(text, agentId) {
+    const hass = this._hass;
+    if (!hass) throw new Error('Home Assistant (hass) is not available');
+
+    const payload = { text, language: 'nl' };
+    const agent = String(agentId || '').trim();
+    if (agent) payload.agent_id = agent;
+
+    if (typeof hass.callApi === 'function') {
+      return hass.callApi('POST', 'conversation/process', payload);
+    }
+    if (typeof hass.callWS === 'function') {
+      return hass.callWS({ type: 'conversation/process', ...payload });
+    }
+
+    const token = hass?.auth?.data?.access_token;
+    const headers = { 'content-type': 'application/json' };
+    if (token) headers.authorization = `Bearer ${token}`;
+
+    const res = await fetch('/api/conversation/process', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} calling /api/conversation/process`);
+    return res.json();
+  }
+
+  _extractConversationText(result) {
+    const candidates = [
+      result?.response?.speech?.plain?.speech,
+      result?.response?.speech?.plain,
+      result?.response?.speech?.speech,
+      result?.response?.speech,
+      result?.response?.text,
+      result?.speech,
+      result?.text,
+    ];
+
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+      if (Array.isArray(c)) {
+        const joined = c.filter((v) => typeof v === 'string').join('\n').trim();
+        if (joined) return joined;
+      }
+    }
+    return '';
+  }
+
+  _normalizeBitcoinReportText(text) {
+    let s = String(text || '');
+    if (!s.trim()) return '';
+
+    s = this._sanitizeBitcoinReportText(s);
+    // Replace leading markdown bullets with a clean bullet (only if present).
+    s = s.replace(/^\s*[\*\-]\s+/gm, '• ');
+    // Collapse excessive blank lines.
+    s = s.replace(/\n{4,}/g, '\n\n\n');
+    return s.trim();
+  }
+
+  _typeBitcoinReport(reportEl, caretEl, text, runId) {
+    if (!reportEl) return;
+    if (this._bitcoinTypingTimer) {
+      clearInterval(this._bitcoinTypingTimer);
+      this._bitcoinTypingTimer = null;
+    }
+
+    const full = this._normalizeBitcoinReportText(text);
+    const total = full.length;
+    if (total === 0) {
+      if (caretEl) caretEl.style.display = 'none';
+      return;
+    }
+
+    if (caretEl) caretEl.style.display = '';
+    reportEl.textContent = '';
+
+    const chunk = total > 5000 ? 14 : total > 2500 ? 10 : total > 1400 ? 6 : total > 800 ? 3 : 1;
+    let i = 0;
+    this._bitcoinTypingTimer = setInterval(() => {
+      if (runId !== this._bitcoinRunId) {
+        clearInterval(this._bitcoinTypingTimer);
+        this._bitcoinTypingTimer = null;
+        return;
+      }
+
+      i = Math.min(total, i + chunk);
+      reportEl.textContent = full.slice(0, i);
+      if (i >= total) {
+        clearInterval(this._bitcoinTypingTimer);
+        this._bitcoinTypingTimer = null;
+        if (caretEl) caretEl.style.display = 'none';
+      }
+    }, 22);
+  }
+
+  // ===== Weather (Buienradar + Gemini) =====
+
+  _cancelWeatherJobs({ resetReport = false } = {}) {
+    if (this._weatherAbortController) {
+      try { this._weatherAbortController.abort(); } catch (_e) { /* ignore */ }
+      this._weatherAbortController = null;
+    }
+    if (this._weatherTypingTimer) {
+      clearInterval(this._weatherTypingTimer);
+      this._weatherTypingTimer = null;
+    }
+    if (resetReport) {
+      this._weatherReportStarted = false;
+    }
+  }
+
+  _ensureWeatherWidget({ reason = '' } = {}) {
+    const widget = this.shadowRoot?.querySelector('.wx-widget');
+    if (!widget) {
+      this._cancelWeatherJobs({ resetReport: true });
+      return;
+    }
+
+    // Reports are prefetched in the background by Home Assistant automations and stored in /local/hue-ui/data/.
+    // Render instantly (no typing animation) and never call Gemini from the browser.
+    if (this._weatherReportStarted) return;
+    this._weatherReportStarted = true;
+
+    const mins = this._minutesSinceLocalMidnight();
+    const slot = (mins >= (12 * 60)) ? 'midday' : 'morning';
+    widget.dataset.wxSlot = slot;
+    const runId = ++this._weatherRunId;
+    void this._loadWeatherPrefetch(widget, runId, { reason, slot });
+  }
+
+  async _loadWeatherPrefetch(widget, runId, { reason = '', slot = 'morning' } = {}) {
+    const reportEl = widget.querySelector('[data-role="wx-report"]');
+    const caretEl = widget.querySelector('[data-role="wx-caret"]');
+    const statusEl = widget.querySelector('[data-role="wx-status"]');
+    const loadingEl = widget.querySelector('[data-role="wx-loading"]');
+    if (caretEl) caretEl.style.display = 'none';
+    if (reportEl) reportEl.textContent = '';
+    if (loadingEl) loadingEl.classList.add('is-visible');
+
+    this._updateWeatherBanner(widget);
+    if (statusEl) statusEl.textContent = `(${reason || 'open'}) Weerbericht laden…`;
+
+    try {
+      const file = slot === 'midday' ? 'weather_midday.json' : 'weather_morning.json';
+      const data = await this._fetchLocalJson(`/local/hue-ui/data/${file}`, { timeoutMs: 3000 });
+      if (runId !== this._weatherRunId) return;
+
+      // Preferred format: either "text" or the structured JSON keys used by _formatWeatherReportFromJson().
+      const text = typeof data?.text === 'string'
+        ? data.text
+        : this._formatWeatherReportFromJson(data || {});
+
+      const ts = Number(data?.ts);
+      const when = Number.isFinite(ts) ? this._formatHhMm(ts) : this._formatHhMm(Date.now());
+      if (statusEl) statusEl.textContent = `Weerbericht (${slot === 'midday' ? 'middag' : 'ochtend'}) • bijgewerkt ${when}`;
+
+      if (reportEl) reportEl.textContent = this._normalizeBitcoinReportText(text || '') || 'Nog geen weerbericht beschikbaar.';
+      this._updateWeatherForecastStrip(widget);
+    } catch (e) {
+      if (runId !== this._weatherRunId) return;
+      if (statusEl) statusEl.textContent = 'Geen prefetched weerbericht gevonden.';
+      if (reportEl) reportEl.textContent = 'Nog geen weerbericht beschikbaar.';
+      console.warn('[HueRoomScreen] Weather prefetch load failed:', e);
+    } finally {
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+      if (caretEl) caretEl.style.display = 'none';
+    }
+  }
+
+  // ===== News (Sources + Gemini) =====
+
+  _cancelNewsJobs({ resetReport = false } = {}) {
+    if (this._newsAbortController) {
+      try { this._newsAbortController.abort(); } catch (_e) { /* ignore */ }
+      this._newsAbortController = null;
+    }
+    if (this._newsHourlyTimer) {
+      try { clearInterval(this._newsHourlyTimer); } catch (_e) { /* ignore */ }
+      this._newsHourlyTimer = null;
+    }
+    if (this._newsDailyTimer) {
+      try { clearInterval(this._newsDailyTimer); } catch (_e) { /* ignore */ }
+      this._newsDailyTimer = null;
+    }
+    const timers = Array.isArray(this._newsTypingTimers) ? this._newsTypingTimers : [];
+    for (const t of timers) {
+      try { clearInterval(t); } catch (_e) { /* ignore */ }
+    }
+    this._newsTypingTimers = [];
+    if (resetReport) {
+      this._newsReportStarted = false;
+      this._newsHydratedFromCache = false;
+    }
+  }
+
+  _ensureNewsWidget({ reason = '' } = {}) {
+    const widget = this.shadowRoot?.querySelector('.newsr-widget');
+    if (!widget) {
+      this._cancelNewsJobs({ resetReport: true });
+      return;
+    }
+
+    // News is prefetched in the background by Home Assistant automations and stored in /local/hue-ui/data/news.json.
+    // Render instantly (no typing animation) and never call Gemini from the browser.
+    if (this._newsReportStarted) return;
+    this._newsReportStarted = true;
+    const runId = ++this._newsRunId;
+    void this._loadNewsPrefetch(widget, runId, { reason });
+  }
+
+  async _loadNewsPrefetch(widget, runId, { reason = '' } = {}) {
+    const loadingEl = widget.querySelector('[data-role="newsr-loading"]');
+    const statusEl = widget.querySelector('[data-role="newsr-status"]');
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    if (statusEl) statusEl.textContent = `(${reason || 'open'}) Nieuws laden…`;
+
+    try {
+      const data = await this._fetchLocalJson('/local/hue-ui/data/news.json', { timeoutMs: 3500 });
+      if (runId !== this._newsRunId) return;
+      if (data && (Array.isArray(data.local) || Array.isArray(data.national))) {
+        this._fillNewsRoomUiFromCache(widget, data, { animate: false });
+        this._newsHydratedFromCache = true;
+      } else {
+        if (statusEl) statusEl.textContent = 'Geen nieuwsdata gevonden.';
+      }
+    } catch (e) {
+      if (runId !== this._newsRunId) return;
+      console.warn('[HueRoomScreen] News prefetch load failed:', e);
+      if (statusEl) statusEl.textContent = 'Geen prefetched nieuws gevonden.';
+    } finally {
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+    }
+  }
+
+  _normalizeNewsItemForCache(it, summaryObj) {
+    const headline = this._sanitizeNewsTextNoLinks(summaryObj?.headline || it?.title || '—');
+    const summary = this._sanitizeNewsTextNoLinks(summaryObj?.summary || '');
+    return {
+      headline,
+      summary,
+      url: String(it?.url || '').trim(),
+      source: String(it?.source || '').trim(),
+      publishedMs: Number.isFinite(Number(it?.publishedMs)) ? Number(it.publishedMs) : null,
+    };
+  }
+
+  _fillNewsRoomUiFromCache(widget, cache, { animate = true } = {}) {
+    if (!widget) return;
+    const titleEl = widget.querySelector('[data-role="newsr-title"]');
+    const subtitleEl = widget.querySelector('[data-role="newsr-subtitle"]');
+    const stampEl = widget.querySelector('[data-role="newsr-datestamp"]');
+    const agendaEl = widget.querySelector('[data-role="newsr-agenda"]');
+    const permitsEl = widget.querySelector('[data-role="newsr-permits"]');
+    const loadingEl = widget.querySelector('[data-role="newsr-loading"]');
+    const statusEl = widget.querySelector('[data-role="newsr-status"]');
+
+    if (loadingEl) loadingEl.classList.remove('is-visible');
+    if (titleEl) titleEl.textContent = this._sanitizeNewsTextNoLinks(cache?.title || 'Weekkrantje');
+    if (subtitleEl) subtitleEl.textContent = this._sanitizeNewsTextNoLinks(cache?.subtitle || 'Dit is het nieuws van deze week');
+    if (stampEl) {
+      const ts = Number(cache?.ts);
+      stampEl.textContent = Number.isFinite(ts)
+        ? new Date(ts).toLocaleString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
+    }
+    if (agendaEl) agendaEl.textContent = this._sanitizeNewsTextNoLinks(cache?.agenda_paragraph || '') || 'Geen open dagen of informatieavonden die er deze week uitspringen.';
+    if (permitsEl) permitsEl.textContent = this._sanitizeNewsTextNoLinks(cache?.permits_paragraph || '') || 'Geen opvallende bouw- of vergunningupdates deze week.';
+
+    const localSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="local"]')) || [];
+    const natSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="national"]')) || [];
+
+    const setSlot = (slotEl, item, { shouldType } = {}) => {
+      const headlineEl = slotEl.querySelector('[data-role="newsr-headline"]');
+      const summaryEl = slotEl.querySelector('[data-role="newsr-summary"]');
+      const caretEl = slotEl.querySelector('[data-role="newsr-caret"]');
+      const sourceEl = slotEl.querySelector('[data-role="newsr-source"]');
+      const whenEl = slotEl.querySelector('[data-role="newsr-when"]');
+      const linkEl = slotEl.querySelector('[data-role="newsr-link"]');
+      const copyBtn = slotEl.querySelector('[data-news-action="copy"]');
+
+      const headline = this._sanitizeNewsTextNoLinks(item?.headline || '—');
+      const summary = this._sanitizeNewsTextNoLinks(item?.summary || '');
+      if (headlineEl) headlineEl.textContent = headline;
+      if (summaryEl) summaryEl.textContent = '';
+      if (caretEl) caretEl.style.display = '';
+
+      if (sourceEl) sourceEl.textContent = String(item?.source || '—').trim() || '—';
+      if (whenEl) whenEl.textContent = this._formatWhenShort(item?.publishedMs);
+
+      const url = String(item?.url || '').trim();
+      if (linkEl) {
+        linkEl.href = url || '#';
+        linkEl.style.pointerEvents = url ? 'auto' : 'none';
+        linkEl.style.opacity = url ? '1' : '0.4';
+      }
+
+      slotEl.dataset.url = url || '';
+      slotEl.dataset.headline = headline;
+      slotEl.dataset.summary = summary;
+      if (copyBtn) copyBtn.dataset.copyReady = 'true';
+
+      if (shouldType) {
+        this._typeNewsText(summaryEl, caretEl, summary, this._newsRunId);
+      } else {
+        if (summaryEl) summaryEl.textContent = summary;
+        if (caretEl) caretEl.style.display = 'none';
+      }
+    };
+
+    const local = Array.isArray(cache?.local) ? cache.local : [];
+    const national = Array.isArray(cache?.national) ? cache.national : [];
+    const animateUrls = (cache && cache._animate_urls && Array.isArray(cache._animate_urls))
+      ? new Set(cache._animate_urls.map((u) => String(u || '').trim()).filter(Boolean))
+      : null;
+    const allowTyping = !!animate;
+
+    for (let i = 0; i < localSlots.length; i += 1) {
+      const item = local[i] || {};
+      const u = String(item?.url || '').trim();
+      const shouldType = allowTyping && (!animateUrls || (u && animateUrls.has(u)));
+      setSlot(localSlots[i], item, { shouldType });
+    }
+    for (let i = 0; i < natSlots.length; i += 1) {
+      const item = national[i] || {};
+      const u = String(item?.url || '').trim();
+      const shouldType = allowTyping && (!animateUrls || (u && animateUrls.has(u)));
+      setSlot(natSlots[i], item, { shouldType });
+    }
+
+    if (statusEl) statusEl.textContent = cache?.status || 'Gereed';
+  }
+
+  async _newsFetchCandidates({ signal } = {}) {
+    const controller = { signal: signal || new AbortController().signal };
+    const fetchStep = async (label, fn, timeoutMs) => {
+      const sub = new AbortController();
+      const onAbort = () => { try { sub.abort(); } catch (_e) { /* ignore */ } };
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      const t = setTimeout(() => { try { sub.abort(); } catch (_e) { /* ignore */ } }, Math.max(500, Number(timeoutMs) || 3500));
+      try { return await fn(sub.signal); } catch (_e) { return []; } finally {
+        clearTimeout(t);
+        try { controller.signal.removeEventListener('abort', onAbort); } catch (_e) { /* ignore */ }
+      }
+    };
+
+    const krantje = await fetchStep('Het Krantje', (s) => this._fetchHetKrantjeHome({ signal: s }), 4500);
+    const lv = await fetchStep('LV.nl', (s) => this._fetchLvRss({ signal: s }), 4000);
+    const google = await fetchStep('Google Nieuws', (s) => this._fetchGoogleNewsLv({ signal: s }), 3000);
+    const nu = await fetchStep('NU.nl', (s) => this._fetchNuRss({ signal: s }), 4000);
+
+    const allLocal = [].concat(lv || []).concat(krantje || []).concat(google || []).filter((it) => it && it.url);
+    const localWeek = this._pickWeekItems(allLocal, 30);
+    const localAgenda = localWeek.filter((it) => this._isAgendaOrEvent(it));
+    const localPermits = localWeek.filter((it) => !this._isAgendaOrEvent(it) && this._isPermitOrBuild(it));
+    const localRegular = localWeek.filter((it) => !this._isAgendaOrEvent(it) && !this._isPermitOrBuild(it));
+    const nationalWeek = this._pickWeekItems(nu || [], 30, { mustHaveDate: true });
+
+    return {
+      localRegular,
+      nationalWeek,
+      agendaTitles: localAgenda.slice(0, 10).map((x) => x.title),
+      permitTitles: localPermits.slice(0, 10).map((x) => x.title),
+    };
+  }
+
+  async _newsSummarizeItems(items) {
+    const list = (Array.isArray(items) ? items : []).slice(0, 2).map((it) => ({
+      title: String(it?.title || '').trim().slice(0, 140),
+      source: String(it?.source || '').trim().slice(0, 30),
+    }));
+    if (!list.length) return [];
+
+    const now = new Date();
+    const stamp = now.toLocaleDateString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long' });
+
+    const prompt = [
+      `Schrijf 2-3 zinnen per nieuwsitem in krant-stijl. Datum: ${stamp}.`,
+      'Output-regels (strict):',
+      '- Return ALLEEN geldige JSON. Geen markdown. Geen extra tekst.',
+      '- Geen links/URLs/domeinen.',
+      '- Geen oorlog/overlijden/geweld/zeer negatief nieuws; als het item negatief is, maak de summary leeg.',
+      '',
+      'Schema:',
+      '{ "items": [ { "headline":"", "summary":"" } ] }',
+      '',
+      'Input items:',
+      JSON.stringify(list),
+    ].join('\n');
+
+    const agentId = await this._pickConversationAgentId('');
+    const result = await this._conversationProcess(prompt, agentId);
+    const raw = this._extractConversationText(result);
+    const obj = this._safeJsonParseObject(raw);
+    const out = Array.isArray(obj?.items) ? obj.items : [];
+    return out.slice(0, list.length);
+  }
+
+  async _newsSummarizeExtras({ agendaTitles, permitTitles }) {
+    const agenda = (Array.isArray(agendaTitles) ? agendaTitles : []).slice(0, 8).map((s) => String(s || '').trim().slice(0, 120)).filter(Boolean);
+    const permits = (Array.isArray(permitTitles) ? permitTitles : []).slice(0, 8).map((s) => String(s || '').trim().slice(0, 120)).filter(Boolean);
+
+    const prompt = [
+      'Schrijf twee korte alinea’s voor onderaan een lokale weekkrant.',
+      'Output-regels (strict):',
+      '- Return ALLEEN geldige JSON. Geen markdown. Geen extra tekst.',
+      '- Geen links/URLs/domeinen.',
+      '',
+      'Schema:',
+      '{ "agenda_paragraph": "", "permits_paragraph": "" }',
+      '',
+      'Agenda titels:',
+      JSON.stringify(agenda),
+      '',
+      'Bouwen/vergunning titels:',
+      JSON.stringify(permits),
+    ].join('\n');
+
+    const agentId = await this._pickConversationAgentId('');
+    const result = await this._conversationProcess(prompt, agentId);
+    const raw = this._extractConversationText(result);
+    const obj = this._safeJsonParseObject(raw) || {};
+    return {
+      agenda_paragraph: this._sanitizeNewsTextNoLinks(obj?.agenda_paragraph || ''),
+      permits_paragraph: this._sanitizeNewsTextNoLinks(obj?.permits_paragraph || ''),
+    };
+  }
+
+  _newsSlotKeyHourly() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}`;
+  }
+
+  async _newsMaybeRunDaily() {
+    if (this._newsDailyInFlight) return;
+    const now = Date.now();
+    const mins = this._minutesSinceLocalMidnight();
+    const after = (7 * 60 + 5);
+    if (mins < after) return;
+
+    const cacheKey = 'hue-ui-cache:news:v2';
+    const cache = this._lsGetJson(cacheKey) || {};
+    const dayMs = this._startOfLocalDayMs(now);
+    if (Number(cache?.daily_day_ms) === dayMs) return;
+
+    this._newsDailyInFlight = true;
+    try {
+      const widget = this.shadowRoot?.querySelector('.newsr-widget');
+      const statusEl = widget?.querySelector?.('[data-role="newsr-status"]');
+      if (statusEl) statusEl.textContent = 'Dagupdate: agenda & vergunningen…';
+
+      const candidates = await this._newsFetchCandidates({});
+      const extras = await this._newsSummarizeExtras(candidates);
+
+      cache.daily_day_ms = dayMs;
+      cache.agenda_paragraph = extras.agenda_paragraph || cache.agenda_paragraph || '';
+      cache.permits_paragraph = extras.permits_paragraph || cache.permits_paragraph || '';
+      cache.ts = Date.now();
+      this._lsSetJson(cacheKey, cache);
+
+      if (widget) this._fillNewsRoomUiFromCache(widget, cache, { animate: false });
+    } catch (_e) {
+      // soft fail
+    } finally {
+      this._newsDailyInFlight = false;
+    }
+  }
+
+  async _newsMaybeRunHourly() {
+    if (this._newsHourlyInFlight) return;
+    const cacheKey = 'hue-ui-cache:news:v2';
+    const cache = this._lsGetJson(cacheKey) || {};
+    const slotKey = this._newsSlotKeyHourly();
+    if (cache?.hourly_slot === slotKey) return;
+
+    this._newsHourlyInFlight = true;
+    try {
+      const widget = this.shadowRoot?.querySelector('.newsr-widget');
+      const statusEl = widget?.querySelector?.('[data-role="newsr-status"]');
+      if (statusEl) statusEl.textContent = 'Uurupdate: nieuwe koppen…';
+
+      const candidates = await this._newsFetchCandidates({});
+      const knownUrls = new Set([]
+        .concat(Array.isArray(cache.local) ? cache.local : [])
+        .concat(Array.isArray(cache.national) ? cache.national : [])
+        .map((x) => String(x?.url || '').trim())
+        .filter(Boolean));
+
+      const newLocal = candidates.localRegular.find((it) => it?.url && !knownUrls.has(it.url)) || null;
+      const newNat = candidates.nationalWeek.find((it) => it?.url && !knownUrls.has(it.url)) || null;
+      const picks = [];
+      if (newLocal) picks.push({ kind: 'local', it: newLocal });
+      if (newNat && picks.length < 2) picks.push({ kind: 'national', it: newNat });
+      if (!picks.length) {
+        cache.hourly_slot = slotKey;
+        this._lsSetJson(cacheKey, cache);
+        if (widget) this._fillNewsRoomUiFromCache(widget, cache, { animate: false });
+        return;
+      }
+
+      const summaries = await this._newsSummarizeItems(picks.map((p) => p.it));
+      const localArr = Array.isArray(cache.local) ? cache.local.slice(0, 5) : [];
+      const natArr = Array.isArray(cache.national) ? cache.national.slice(0, 5) : [];
+      const animateUrls = [];
+
+      for (let i = 0; i < picks.length; i += 1) {
+        const p = picks[i];
+        const s = summaries[i] || {};
+        const entry = this._normalizeNewsItemForCache(p.it, s);
+        if (p.kind === 'local') {
+          localArr.unshift(entry);
+          while (localArr.length > 5) localArr.pop();
+        } else {
+          natArr.unshift(entry);
+          while (natArr.length > 5) natArr.pop();
+        }
+        if (entry?.url) animateUrls.push(entry.url);
+      }
+
+      cache.local = localArr;
+      cache.national = natArr;
+      cache.hourly_slot = slotKey;
+      cache.ts = Date.now();
+      cache.status = `Bijgewerkt om ${this._formatHhMm(Date.now())}`;
+      cache._animate_urls = animateUrls;
+      this._lsSetJson(cacheKey, cache);
+
+      if (widget) {
+        widget.classList.add('has-new');
+        setTimeout(() => { try { widget.classList.remove('has-new'); } catch (_e) { /* ignore */ } }, 6500);
+        this._fillNewsRoomUiFromCache(widget, cache, { animate: true });
+        delete cache._animate_urls;
+      }
+    } catch (_e) {
+      // soft fail
+    } finally {
+      this._newsHourlyInFlight = false;
+    }
+  }
+
+  async _newsBootstrap(widget, runId, reason) {
+    const loadingEl = widget?.querySelector?.('[data-role="newsr-loading"]');
+    const statusEl = widget?.querySelector?.('[data-role="newsr-status"]');
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    if (statusEl) statusEl.textContent = `(${reason || 'enter'}) Eerste keer: koppen ophalen…`;
+
+    const candidates = await this._newsFetchCandidates({});
+    const localPicked = this._ensureNewsN(candidates.localRegular, 5, 'lokaal');
+    const nationalPicked = this._ensureNewsN(candidates.nationalWeek, 5, 'landelijk');
+
+    if (statusEl) statusEl.textContent = 'Gemini schrijft samenvattingen (lokaal)…';
+    const localSummaries = await this._newsSummarizeItems(localPicked.slice(0, 2));
+    const localSummaries2 = await this._newsSummarizeItems(localPicked.slice(2, 4));
+    const localSummaries3 = await this._newsSummarizeItems(localPicked.slice(4, 5));
+    const localAll = [].concat(localSummaries || []).concat(localSummaries2 || []).concat(localSummaries3 || []);
+
+    if (statusEl) statusEl.textContent = 'Gemini schrijft samenvattingen (NL)…';
+    const natSummaries = await this._newsSummarizeItems(nationalPicked.slice(0, 2));
+    const natSummaries2 = await this._newsSummarizeItems(nationalPicked.slice(2, 4));
+    const natSummaries3 = await this._newsSummarizeItems(nationalPicked.slice(4, 5));
+    const natAll = [].concat(natSummaries || []).concat(natSummaries2 || []).concat(natSummaries3 || []);
+
+    if (statusEl) statusEl.textContent = 'Gemini schrijft agenda/vergunningen…';
+    const extras = await this._newsSummarizeExtras(candidates);
+
+    const cache = {
+      ts: Date.now(),
+      title: 'Weekkrantje',
+      subtitle: 'Dit is het nieuws van deze week',
+      local: localPicked.map((it, i) => this._normalizeNewsItemForCache(it, localAll[i] || {})),
+      national: nationalPicked.map((it, i) => this._normalizeNewsItemForCache(it, natAll[i] || {})),
+      agenda_paragraph: extras.agenda_paragraph || '',
+      permits_paragraph: extras.permits_paragraph || '',
+      daily_day_ms: this._startOfLocalDayMs(Date.now()),
+      hourly_slot: this._newsSlotKeyHourly(),
+      status: `Bijgewerkt om ${this._formatHhMm(Date.now())}`,
+    };
+    this._lsSetJson('hue-ui-cache:news:v2', cache);
+
+    if (loadingEl) loadingEl.classList.remove('is-visible');
+    this._fillNewsRoomUiFromCache(widget, cache, { animate: true });
+    this._newsHydratedFromCache = true;
+  }
+
+  _parseRfc2822ToMs(s) {
+    const v = String(s || '').trim();
+    if (!v) return null;
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  }
+
+  _parseDutchDateToMs(s) {
+    // Examples in Het Krantje HTML:
+    // "7 feb, 15:00" or "dinsdag 10 februari 2026 10:30"
+    const v = String(s || '').trim().toLowerCase();
+    if (!v) return null;
+    const months = {
+      jan: 0, januari: 0,
+      feb: 1, februari: 1,
+      mrt: 2, maart: 2,
+      apr: 3, april: 3,
+      mei: 4,
+      jun: 5, juni: 5,
+      jul: 6, juli: 6,
+      aug: 7, augustus: 7,
+      sep: 8, september: 8,
+      okt: 9, oktober: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11,
+    };
+
+    // "7 feb, 15:00"
+    let m = v.match(/\b(\d{1,2})\s+([a-z]{3,9})\s*,\s*(\d{1,2}):(\d{2})\b/);
+    if (m) {
+      const day = Number(m[1]);
+      const mon = months[m[2]];
+      const hh = Number(m[3]);
+      const mm = Number(m[4]);
+      if (!Number.isFinite(day) || mon == null) return null;
+      const now = new Date();
+      const year = now.getFullYear();
+      const d = new Date(year, mon, day, hh, mm, 0, 0);
+      const ts = d.getTime();
+      return Number.isFinite(ts) ? ts : null;
+    }
+
+    // "dinsdag 10 februari 2026 10:30"
+    m = v.match(/\b(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})\s+(\d{1,2}):(\d{2})\b/);
+    if (m) {
+      const day = Number(m[1]);
+      const mon = months[m[2]];
+      const year = Number(m[3]);
+      const hh = Number(m[4]);
+      const mm = Number(m[5]);
+      if (!Number.isFinite(day) || mon == null || !Number.isFinite(year)) return null;
+      const d = new Date(year, mon, day, hh, mm, 0, 0);
+      const ts = d.getTime();
+      return Number.isFinite(ts) ? ts : null;
+    }
+
+    // "Geplaatst op woensdag 4 februari 2026"
+    m = v.match(/\bgeplaatst\s+op\s+[a-z]+\s+(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})\b/);
+    if (m) {
+      const day = Number(m[1]);
+      const mon = months[m[2]];
+      const year = Number(m[3]);
+      if (!Number.isFinite(day) || mon == null || !Number.isFinite(year)) return null;
+      const d = new Date(year, mon, day, 12, 0, 0, 0);
+      const ts = d.getTime();
+      return Number.isFinite(ts) ? ts : null;
+    }
+
+    return null;
+  }
+
+  _stripHtmlToText(html) {
+    const s = String(html || '').trim();
+    if (!s) return '';
+    try {
+      const doc = new DOMParser().parseFromString(s, 'text/html');
+      return String(doc?.body?.textContent || '').replace(/\s+/g, ' ').trim();
+    } catch (_e) {
+      return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  async _fetchViaCodeTabs(url, { signal } = {}) {
+    const u = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(String(url || '').trim())}`;
+    const res = await fetch(u, { method: 'GET', mode: 'cors', signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    return res.text();
+  }
+
+  _parseRssItems(xmlText, sourceName) {
+    const xml = String(xmlText || '').trim();
+    if (!xml) return [];
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(xml, 'application/xml');
+    } catch (_e) {
+      return [];
+    }
+    const items = Array.from(doc.querySelectorAll('item')) || [];
+    return items.map((it) => {
+      const title = String(it.querySelector('title')?.textContent || '').trim();
+      const link = String(it.querySelector('link')?.textContent || '').trim();
+      const desc = String(it.querySelector('description')?.textContent || '').trim();
+      const pub = String(it.querySelector('pubDate')?.textContent || '').trim();
+      const cat = String(it.querySelector('category')?.textContent || '').trim();
+      const publishedMs = this._parseRfc2822ToMs(pub);
+      return {
+        source: sourceName,
+        title,
+        url: link,
+        description: this._stripHtmlToText(desc),
+        category: cat,
+        publishedMs,
+      };
+    }).filter((x) => x.title && x.url);
+  }
+
+  async _fetchNuRss({ signal } = {}) {
+    const xml = await this._fetchViaCodeTabs('https://www.nu.nl/rss', { signal });
+    return this._parseRssItems(xml, 'NU.nl');
+  }
+
+  async _fetchLvRss({ signal } = {}) {
+    const xml = await this._fetchViaCodeTabs('https://www.lv.nl/feed/rss/nieuws/10%2B179', { signal });
+    return this._parseRssItems(xml, 'LV.nl');
+  }
+
+  async _fetchHetKrantjeHome({ signal } = {}) {
+    const html = await this._fetchViaCodeTabs('https://www.hetkrantje-online.nl/', { signal });
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (_e) {
+      return [];
+    }
+    const anchors = Array.from(doc.querySelectorAll('a[href^="/nieuws/"], a[href^="/agenda/"]')) || [];
+    const seen = new Set();
+    const out = [];
+    for (const a of anchors) {
+      const href = String(a.getAttribute('href') || '').trim();
+      const title = String(a.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!href || !title) continue;
+      const url = `https://www.hetkrantje-online.nl${href}`;
+      const key = `${href}|${title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Try to find a nearby date string in the card.
+      let publishedMs = null;
+      let cursor = a.parentElement;
+      for (let depth = 0; depth < 4 && cursor && !publishedMs; depth += 1) {
+        const txt = String(cursor.textContent || '').replace(/\s+/g, ' ').trim();
+        const mm = txt.match(/\b(\d{1,2})\s+[a-z]{3,9}\s*,\s*\d{1,2}:\d{2}\b/i) || txt.match(/\bgeplaatst\s+op\s+[a-z]+\s+\d{1,2}\s+[a-z]{3,9}\s+\d{4}\b/i) || txt.match(/\b\d{1,2}\s+[a-z]{3,9}\s+\d{4}\s+\d{1,2}:\d{2}\b/i);
+        if (mm) publishedMs = this._parseDutchDateToMs(mm[0]);
+        cursor = cursor.parentElement;
+      }
+
+      out.push({
+        source: 'Het Krantje',
+        title,
+        url,
+        description: '',
+        category: href.startsWith('/agenda/') ? 'agenda' : 'nieuws',
+        publishedMs,
+      });
+      if (out.length >= 30) break;
+    }
+    return out;
+  }
+
+  async _fetchGoogleNewsLv({ signal } = {}) {
+    try {
+      const base = String(this._roomsIndex?.news_google_query || this._roomsIndex?.weather_location || '').trim();
+      const query = base ? base : 'Nederland';
+      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=nl&gl=NL&ceid=NL:nl`;
+      const xml = await this._fetchViaCodeTabs(url, { signal });
+      const items = this._parseRssItems(xml, 'Google Nieuws');
+      return items.slice(0, 12);
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  _sanitizeNewsTextNoLinks(text) {
+    let s = String(text || '');
+    if (!s.trim()) return '';
+    s = s.replace(/\bhttps?:\/\/\S+/gi, '');
+    s = s.replace(/\bwww\.\S+/gi, '');
+    s = s.replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi, '');
+    s = s.replace(/\*\*/g, '');
+    s = s.replace(/`{1,3}/g, '');
+    s = s.replace(/^\s*#+\s*/gm, '');
+    s = s.replace(/[ \t]{2,}/g, ' ');
+    s = s.replace(/\n{4,}/g, '\n\n\n');
+    return s.trim();
+  }
+
+  _isNegativeNews(item) {
+    const hay = `${String(item?.title || '')} ${String(item?.description || '')} ${String(item?.category || '')}`.toLowerCase();
+    const neg = [
+      'oorlog', 'oorlogen', 'gaza', 'israel', 'israël', 'palestina', 'oekra', 'rusland', 'raket',
+      'overleden', 'dood', 'dodelijk', 'rouw', 'moord', 'mishand', 'aanslag', 'schiet', 'gewond', 'slachtoffer',
+      'explos', 'brand', 'crash', 'ongeval', 'verkracht', 'drugs', 'terror', 'diefstal', 'beroving',
+    ];
+    return neg.some((k) => hay.includes(k));
+  }
+
+  _isIrrelevantLocal(item) {
+    const hay = `${String(item?.title || '')} ${String(item?.description || '')}`.toLowerCase();
+    return hay.includes('ooievaarspas');
+  }
+
+  _isPermitOrBuild(item) {
+    const hay = `${String(item?.title || '')} ${String(item?.description || '')}`.toLowerCase();
+    const keys = [
+      'vergunning', 'omgevingsvergunning', 'bestemmingsplan', 'bouw', 'woningbouw', 'herinrichting',
+      'intentieovereenkomst', 'plan', 'project', 'aanleg', 'warmtetransportleiding', 'vlietlijn',
+      'sloop', 'nieuw woon', 'complex', 'plaspoelpolder', 'julianabaan',
+    ];
+    return keys.some((k) => hay.includes(k));
+  }
+
+  _isAgendaOrEvent(item) {
+    const hay = `${String(item?.title || '')} ${String(item?.description || '')} ${String(item?.category || '')}`.toLowerCase();
+    if (hay.includes('agenda')) return true;
+    const keys = [
+      'open dag', 'opendag', 'informatieavond', 'informatie avond', 'infoavond', 'info avond',
+      'inloop', 'bijeenkomst', 'lezing', 'workshop',
+      'markt', 'braderie', 'festival', 'kermis', 'concert', 'optreden', 'theater',
+      'open huis', 'proeverij',
+      'raadsvergadering', 'inspraak', 'informatie bijeenkomst',
+    ];
+    return keys.some((k) => hay.includes(k));
+  }
+
+  _ensureNewsN(items, n, label) {
+    const maxN = Number.isFinite(Number(n)) ? Math.max(1, Math.min(8, Math.round(Number(n)))) : 5;
+    const out = Array.isArray(items) ? items.slice(0, maxN) : [];
+    while (out.length < maxN) {
+      out.push({
+        source: '',
+        title: `Geen ${label} nieuws gevonden (deze week)`,
+        url: '',
+        description: '',
+        category: '',
+        publishedMs: NaN,
+      });
+    }
+    return out;
+  }
+
+  _formatWhenShort(tsMs) {
+    if (!Number.isFinite(Number(tsMs))) return '—';
+    const d = new Date(Number(tsMs));
+    return d.toLocaleDateString('nl-NL', { weekday: 'short', day: '2-digit', month: 'short' });
+  }
+
+  _pickWeekItems(items, max, { mustHaveDate = false } = {}) {
+    const list = Array.isArray(items) ? items : [];
+    const maxN = Number.isFinite(Number(max)) ? Math.max(1, Math.min(12, Math.round(Number(max)))) : 5;
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 3600 * 1000;
+    const filtered = list
+      .filter((it) => it && it.title && it.url)
+      .filter((it) => !this._isNegativeNews(it))
+      .filter((it) => !this._isIrrelevantLocal(it))
+      .filter((it) => !mustHaveDate || Number.isFinite(Number(it.publishedMs)));
+
+    const scored = filtered.map((it) => {
+      const t = Number(it.publishedMs);
+      const inWeek = Number.isFinite(t) ? (t >= weekAgo && t <= now) : false;
+      return { it, inWeek, t: Number.isFinite(t) ? t : 0 };
+    }).filter((x) => (mustHaveDate ? x.inWeek : true));
+
+    // Prefer in-week dated items; then newest first.
+    scored.sort((a, b) => (b.inWeek - a.inWeek) || (b.t - a.t));
+
+    const out = [];
+    const seen = new Set();
+    for (const x of scored) {
+      if (!x.inWeek && Number.isFinite(Number(x.it.publishedMs))) continue; // if dated but old, skip
+      const key = String(x.it.title || '').toLowerCase().slice(0, 120);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(x.it);
+      if (out.length >= maxN) break;
+    }
+    return out;
+  }
+
+  async _generateNewsRoomSummaries({ localItems, nationalItems, permitItems, agendaItems }) {
+    const local = (Array.isArray(localItems) ? localItems : []).slice(0, 5).map((it) => ({
+      title: String(it.title || '').trim().slice(0, 140),
+      source: String(it.source || '').trim(),
+      description: String(it.description || '').trim().slice(0, 180),
+    }));
+    const national = (Array.isArray(nationalItems) ? nationalItems : []).slice(0, 5).map((it) => ({
+      title: String(it.title || '').trim().slice(0, 140),
+      source: String(it.source || '').trim(),
+      description: String(it.description || '').trim().slice(0, 180),
+    }));
+    const permits = (Array.isArray(permitItems) ? permitItems : []).slice(0, 4).map((it) => String(it.title || '').trim()).filter(Boolean);
+    const agenda = (Array.isArray(agendaItems) ? agendaItems : []).slice(0, 6).map((it) => String(it.title || '').trim()).filter(Boolean);
+
+    const now = new Date();
+    const localDay = now.toLocaleDateString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const localTime = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+
+    const loc = String(this._roomsIndex?.news_location_hint || this._roomsIndex?.weather_location || '').trim();
+    const context = {
+      now_local: `${localDay} ${localTime}`,
+      location_hint: loc,
+      local_items: local,
+      national_items: national,
+      agenda_titles: agenda,
+      permits_titles: permits,
+      constraints: {
+        no_wars_deaths_negative: true,
+        local_first: true,
+        week_only: true,
+      },
+    };
+
+    const locLine = loc ? ` in ${loc}` : '';
+    const prompt = [
+      `Je maakt een speels, goed leesbaar weekkrantje in het Nederlands voor een gemiddeld gezin${locLine}.`,
+      '',
+      'Output-regels (strict):',
+      '- Return ALLEEN geldige JSON. Geen markdown. Geen extra tekst.',
+      '- Geen links/URLs/domeinen in de tekst zelf.',
+      '- Geen oorlog/overlijden/geweld/zeer negatief nieuws; als er toch iets negatiefs in de input zit, laat het weg.',
+      '- Samenvattingen: rustig, concreet, 2-3 zinnen, geen bullets.',
+      '',
+      'Schema (exact deze keys):',
+      '{',
+      '  "title": "korte titel",',
+      '  "subtitle": "1 zin (bijv. Dit is het nieuws van deze week)",',
+      '  "local": [{"headline":"", "summary":""}],',
+      '  "national": [{"headline":"", "summary":""}],',
+      '  "agenda_paragraph": "1 alinea over agenda/open dagen/informatieavonden (optioneel)",',
+      '  "permits_paragraph": "1 alinea over bouwen/vergunningen (optioneel)"',
+      '}',
+      '',
+      'Vul local en national met precies 5 items.',
+      'agenda_paragraph en permits_paragraph mogen leeg zijn als er niets relevants is.',
+      'Als een input-item "Geen ... nieuws gevonden" is, schrijf dan 1 korte zin waarom (bijv. rustig weekje of te weinig relevante koppen).',
+      '',
+      'Context:',
+      JSON.stringify(context),
+    ].join('\n');
+
+    const agentId = await this._pickConversationAgentId('');
+    const result = await this._conversationProcess(prompt, agentId);
+    const raw = this._extractConversationText(result);
+
+    const normalize = (obj) => {
+      if (!obj || typeof obj !== 'object') return null;
+      const out = { ...obj };
+      if (typeof out.title !== 'string') out.title = 'Weekkrantje';
+      if (typeof out.subtitle !== 'string') out.subtitle = 'Dit is het nieuws van deze week';
+      if (!Array.isArray(out.local)) out.local = [];
+      if (!Array.isArray(out.national)) out.national = [];
+      out.local = out.local.slice(0, 5).map((x) => ({
+        headline: typeof x?.headline === 'string' ? x.headline : '',
+        summary: typeof x?.summary === 'string' ? x.summary : '',
+      }));
+      out.national = out.national.slice(0, 5).map((x) => ({
+        headline: typeof x?.headline === 'string' ? x.headline : '',
+        summary: typeof x?.summary === 'string' ? x.summary : '',
+      }));
+      while (out.local.length < 5) out.local.push({ headline: '—', summary: '' });
+      while (out.national.length < 5) out.national.push({ headline: '—', summary: '' });
+      if (typeof out.agenda_paragraph !== 'string') out.agenda_paragraph = '';
+      if (typeof out.permits_paragraph !== 'string') out.permits_paragraph = '';
+      return out;
+    };
+
+    let obj = normalize(this._safeJsonParseObject(raw));
+    if (obj) return obj;
+
+    // Repair pass: Gemini sometimes adds extra text or slightly-invalid JSON.
+    const repairPrompt = [
+      'Converteer de volgende tekst naar GELDIGE JSON volgens dit schema.',
+      'Return ALLEEN JSON. Geen markdown. Geen extra tekst.',
+      '',
+      'Schema:',
+      '{',
+      '  "title": "korte titel",',
+      '  "subtitle": "1 zin",',
+      '  "local": [{"headline":"", "summary":""}],',
+      '  "national": [{"headline":"", "summary":""}],',
+      '  "agenda_paragraph": "1 alinea (optioneel)",',
+      '  "permits_paragraph": "1 alinea (optioneel)"',
+      '}',
+      '',
+      'Tekst:',
+      raw,
+    ].join('\n');
+
+    const repaired = await this._conversationProcess(repairPrompt, agentId);
+    const repairedRaw = this._extractConversationText(repaired);
+    obj = normalize(this._safeJsonParseObject(repairedRaw));
+    return obj;
+  }
+
+  _fillNewsRoomUi(widget, payload, { localPicked, nationalPicked, permitPicked }) {
+    const titleEl = widget.querySelector('[data-role="newsr-title"]');
+    const subtitleEl = widget.querySelector('[data-role="newsr-subtitle"]');
+    const stampEl = widget.querySelector('[data-role="newsr-datestamp"]');
+    const agendaEl = widget.querySelector('[data-role="newsr-agenda"]');
+    const permitsEl = widget.querySelector('[data-role="newsr-permits"]');
+
+    const now = new Date();
+    if (stampEl) stampEl.textContent = now.toLocaleString('nl-NL', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
+    if (titleEl) titleEl.textContent = this._sanitizeNewsTextNoLinks(payload?.title || 'Weekkrantje');
+    if (subtitleEl) subtitleEl.textContent = this._sanitizeNewsTextNoLinks(payload?.subtitle || 'Dit is het nieuws van deze week');
+
+    const agendaText = String(payload?.agenda_paragraph || '').trim()
+      ? this._sanitizeNewsTextNoLinks(payload.agenda_paragraph)
+      : 'Geen open dagen of informatieavonden die er deze week uitspringen.';
+    if (agendaEl) agendaEl.textContent = agendaText;
+
+    const permitsText = String(payload?.permits_paragraph || '').trim()
+      ? this._sanitizeNewsTextNoLinks(payload.permits_paragraph)
+      : (permitPicked && permitPicked.length)
+        ? `Deze week in de regio: ${permitPicked.slice(0, 3).map((x) => x.title).join('. ') + '.'}`
+        : 'Geen opvallende bouw- of vergunningupdates deze week.';
+    if (permitsEl) permitsEl.textContent = permitsText;
+
+    const renderItem = (slotEl, textItem, srcItem) => {
+      const headlineEl = slotEl.querySelector('[data-role="newsr-headline"]');
+      const summaryEl = slotEl.querySelector('[data-role="newsr-summary"]');
+      const caretEl = slotEl.querySelector('[data-role="newsr-caret"]');
+      const sourceEl = slotEl.querySelector('[data-role="newsr-source"]');
+      const whenEl = slotEl.querySelector('[data-role="newsr-when"]');
+      const linkEl = slotEl.querySelector('[data-role="newsr-link"]');
+      const copyBtn = slotEl.querySelector('[data-news-action="copy"]');
+
+      const headline = this._sanitizeNewsTextNoLinks(textItem?.headline || srcItem?.title || '—');
+      const summary = this._sanitizeNewsTextNoLinks(textItem?.summary || '');
+
+      if (headlineEl) headlineEl.textContent = headline;
+      if (summaryEl) summaryEl.textContent = '';
+      if (caretEl) caretEl.style.display = '';
+
+      const source = String(srcItem?.source || '').trim() || '—';
+      if (sourceEl) sourceEl.textContent = source;
+      if (whenEl) whenEl.textContent = this._formatWhenShort(srcItem?.publishedMs);
+
+      const url = String(srcItem?.url || '').trim();
+      if (linkEl) {
+        linkEl.href = url || '#';
+        linkEl.style.pointerEvents = url ? 'auto' : 'none';
+        linkEl.style.opacity = url ? '1' : '0.4';
+      }
+
+      // Store for copy action.
+      slotEl.dataset.url = url || '';
+      slotEl.dataset.headline = headline;
+      slotEl.dataset.summary = summary;
+      if (copyBtn) copyBtn.dataset.copyReady = 'true';
+
+      // Typewriter the summary.
+      this._typeNewsText(summaryEl, caretEl, summary, this._newsRunId);
+    };
+
+    const localText = Array.isArray(payload?.local) ? payload.local : [];
+    const nationalText = Array.isArray(payload?.national) ? payload.national : [];
+
+    const localSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="local"]')) || [];
+    const natSlots = Array.from(widget.querySelectorAll('.newsr-item[data-kind="national"]')) || [];
+
+    for (let i = 0; i < localSlots.length; i += 1) {
+      renderItem(localSlots[i], localText[i], localPicked[i]);
+    }
+    for (let i = 0; i < natSlots.length; i += 1) {
+      renderItem(natSlots[i], nationalText[i], nationalPicked[i]);
+    }
+  }
+
+  _typeNewsText(el, caretEl, text, runId) {
+    if (!el) return;
+    const full = this._sanitizeNewsTextNoLinks(text || '');
+    if (!full) {
+      if (caretEl) caretEl.style.display = 'none';
+      return;
+    }
+
+    el.textContent = '';
+    if (caretEl) caretEl.style.display = '';
+    const total = full.length;
+    const chunk = total > 900 ? 3 : 1;
+    let i = 0;
+    const timer = setInterval(() => {
+      if (runId !== this._newsRunId) {
+        clearInterval(timer);
+        return;
+      }
+      i = Math.min(total, i + chunk);
+      el.textContent = full.slice(0, i);
+      if (i >= total) {
+        clearInterval(timer);
+        if (caretEl) caretEl.style.display = 'none';
+      }
+    }, 20);
+    this._newsTypingTimers.push(timer);
+  }
+
+  async _runNewsFlow(widget, runId, reason) {
+    const loadingEl = widget.querySelector('[data-role="newsr-loading"]');
+    const statusEl = widget.querySelector('[data-role="newsr-status"]');
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    if (statusEl) statusEl.textContent = `(${reason || 'enter'}) Koppen ophalen…`;
+
+    if (this._newsAbortController) {
+      try { this._newsAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    const controller = new AbortController();
+    this._newsAbortController = controller;
+
+    try {
+      const fetchStep = async (label, fn, timeoutMs) => {
+        if (statusEl) statusEl.textContent = `${label}…`;
+        const sub = new AbortController();
+        const onAbort = () => { try { sub.abort(); } catch (_e) { /* ignore */ } };
+        controller.signal.addEventListener('abort', onAbort, { once: true });
+        const t = setTimeout(() => {
+          try { sub.abort(); } catch (_e) { /* ignore */ }
+        }, Math.max(500, Number(timeoutMs) || 3500));
+        try {
+          return await fn(sub.signal);
+        } catch (e) {
+          console.warn('[HueRoomScreen] News source failed:', label, e);
+          return [];
+        } finally {
+          clearTimeout(t);
+          try { controller.signal.removeEventListener('abort', onAbort); } catch (_e) { /* ignore */ }
+        }
+      };
+
+      // Fetch sources sequentially with short timeouts so one slow source doesn't block the whole room.
+      const krantje = await fetchStep('Het Krantje ophalen', (signal) => this._fetchHetKrantjeHome({ signal }), 4500);
+      if (runId !== this._newsRunId) return;
+      const lv = await fetchStep('LV.nl ophalen', (signal) => this._fetchLvRss({ signal }), 4000);
+      if (runId !== this._newsRunId) return;
+      const google = await fetchStep('Google Nieuws ophalen', (signal) => this._fetchGoogleNewsLv({ signal }), 3000);
+      if (runId !== this._newsRunId) return;
+      const nu = await fetchStep('NU.nl ophalen', (signal) => this._fetchNuRss({ signal }), 4000);
+      if (runId !== this._newsRunId) return;
+
+      const allLocal = []
+        .concat(lv || [])
+        .concat(krantje || [])
+        .concat(google || [])
+        .filter((it) => it && it.url);
+
+      // Local sources are not always reliably dated (Het Krantje anchors). Keep undated items but prefer dated/newest.
+      const localWeek = this._pickWeekItems(allLocal, 20);
+      const localAgenda = localWeek.filter((it) => this._isAgendaOrEvent(it));
+      const localPermits = localWeek.filter((it) => !this._isAgendaOrEvent(it) && this._isPermitOrBuild(it));
+      const localRegular = localWeek.filter((it) => !this._isAgendaOrEvent(it) && !this._isPermitOrBuild(it));
+
+      const agendaPicked = localAgenda.slice(0, 6);
+      const permitPicked = localPermits.slice(0, 6);
+      const localPicked = this._ensureNewsN(localRegular, 5, 'lokaal');
+
+      const nuWeek = this._pickWeekItems(nu || [], 12, { mustHaveDate: true });
+      const nationalPicked = this._ensureNewsN(nuWeek, 5, 'landelijk');
+
+      if (statusEl) statusEl.textContent = 'Gemini schrijft samenvattingen…';
+      const payload = await this._generateNewsRoomSummaries({
+        localItems: localPicked,
+        nationalItems: nationalPicked,
+        permitItems: permitPicked,
+        agendaItems: agendaPicked,
+      });
+      if (runId !== this._newsRunId) return;
+      if (!payload) throw new Error('Gemini gaf geen geldig resultaat terug');
+
+      this._fillNewsRoomUi(widget, payload, { localPicked, nationalPicked, permitPicked });
+      if (statusEl) statusEl.textContent = `Bijgewerkt om ${this._formatHhMm(Date.now())}`;
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+
+      // Mark as "new" only when we have new URLs since last run (simple heuristic).
+      const cacheKey = 'hue-ui-cache:news:lasturls:v1';
+      const prev = this._lsGetJson(cacheKey) || {};
+      const urls = []
+        .concat(localPicked || [])
+        .concat(nationalPicked || [])
+        .map((it) => String(it?.url || '').trim())
+        .filter(Boolean);
+      const hasAnyNew = urls.some((u) => !prev[u]);
+      if (hasAnyNew) {
+        const next = {};
+        for (const u of urls) next[u] = 1;
+        this._lsSetJson(cacheKey, next);
+        widget.classList.add('has-new');
+        setTimeout(() => {
+          try { widget.classList.remove('has-new'); } catch (_e) { /* ignore */ }
+        }, 6500);
+      }
+    } catch (e) {
+      if (runId !== this._newsRunId) return;
+      console.warn('[HueRoomScreen] News flow failed:', e);
+      if (statusEl) statusEl.textContent = `Mislukt: ${String(e?.message || e)}`;
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+    } finally {
+      if (this._newsAbortController === controller) {
+        this._newsAbortController = null;
+      }
+    }
+  }
+
+  _getWeatherState() {
+    const weatherEntity = this._roomsIndex?.weather_entity || 'weather.buienradar';
+    return this._hass?.states?.[weatherEntity] || null;
+  }
+
+  _getRainChanceNextHourRoom() {
+    const entityId = this._roomsIndex?.weather_rain_chance_entity;
+    if (!entityId) return null;
+    const rainState = this._hass?.states?.[entityId];
+    if (!rainState) return null;
+    const v = Number(rainState?.state);
+    if (Number.isFinite(v)) return Math.max(0, Math.min(100, Math.round(v)));
+    return null;
+  }
+
+  _formatWind(weatherState) {
+    const w = Number(weatherState?.attributes?.wind_speed);
+    const u = String(weatherState?.attributes?.wind_speed_unit || '').trim();
+    if (!Number.isFinite(w)) return '--';
+    return `${Math.round(w)}${u ? ` ${u}` : ''}`.trim();
+  }
+
+  _updateWeatherBanner(widget) {
+    const weather = this._getWeatherState();
+    const location = String(this._roomsIndex?.weather_location || 'Leidschendam').trim() || 'Leidschendam';
+    const emojiEl = widget.querySelector('[data-role="wx-emoji"]');
+    const tempEl = widget.querySelector('[data-role="wx-temp"]');
+    const condEl = widget.querySelector('[data-role="wx-cond"]');
+    const locEl = widget.querySelector('[data-role="wx-loc"]');
+    const rainEl = widget.querySelector('[data-role="wx-rain"]');
+    const windEl = widget.querySelector('[data-role="wx-wind"]');
+
+    if (locEl) locEl.textContent = location;
+
+    if (!weather) {
+      if (emojiEl) emojiEl.textContent = '⛅';
+      if (tempEl) tempEl.textContent = '--°';
+      if (condEl) condEl.textContent = 'Weer onbekend';
+      if (rainEl) rainEl.textContent = 'Regen: --%';
+      if (windEl) windEl.textContent = 'Wind: --';
+      return;
+    }
+
+    const condition = String(weather.state || '').trim();
+    const temp = weather.attributes?.temperature;
+    const rainChance = this._getRainChanceNextHourRoom();
+
+    if (emojiEl) emojiEl.textContent = getWeatherEmoji(condition);
+    if (tempEl) tempEl.textContent = Number.isFinite(Number(temp)) ? `${Math.round(Number(temp))}°` : '--°';
+    if (condEl) condEl.textContent = translateCondition(condition);
+    if (rainEl) rainEl.textContent = `Regen: ${rainChance == null ? '--' : rainChance}%`;
+    if (windEl) windEl.textContent = `Wind: ${this._formatWind(weather)}`;
+
+    this._updateWeatherForecastStrip(widget);
+  }
+
+  _updateWeatherForecastStrip(widget) {
+    if (!widget) return;
+    const strip = widget.querySelector('[data-role="wx-forecast"]');
+    if (!strip) return;
+    const weather = this._getWeatherState();
+    const forecast = Array.isArray(weather?.attributes?.forecast) ? weather.attributes.forecast : [];
+    if (!forecast.length) {
+      strip.innerHTML = '';
+      return;
+    }
+
+    const mins = this._minutesSinceLocalMidnight();
+    const slot = mins >= (12 * 60) ? 'midday' : 'morning';
+    const startHour = slot === 'midday' ? 12 : 7;
+    const endHour = slot === 'midday' ? 19 : 13;
+
+    const rows = [];
+    for (const f of forecast) {
+      const dt = f?.datetime || f?.time || '';
+      const t = Date.parse(String(dt));
+      if (!Number.isFinite(t)) continue;
+      const d = new Date(t);
+      const h = d.getHours();
+      if (h < startHour || h > endHour) continue;
+      rows.push({
+        time: d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+        cond: String(f?.condition || '').trim(),
+        temp: Number.isFinite(Number(f?.temperature)) ? Math.round(Number(f.temperature)) : null,
+        precip: Number.isFinite(Number(f?.precipitation)) ? Number(f.precipitation) : null,
+      });
+      if (rows.length >= 10) break;
+    }
+
+    if (!rows.length) {
+      strip.innerHTML = '';
+      return;
+    }
+
+    strip.innerHTML = rows.map((r) => {
+      const emoji = getWeatherEmoji(r.cond);
+      const temp = r.temp == null ? '--' : String(r.temp);
+      const rain = r.precip == null ? '--' : String(Math.round(r.precip));
+      return `
+        <div class="wx-fi">
+          <div class="wx-fi-time">${escapeHtml(r.time)}</div>
+          <div class="wx-fi-emoji">${escapeHtml(emoji)}</div>
+          <div class="wx-fi-temp">${escapeHtml(temp)}°</div>
+          <div class="wx-fi-rain">${escapeHtml(rain)}%</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async _runWeatherFlow(widget, runId, reason) {
+    const reportEl = widget.querySelector('[data-role="wx-report"]');
+    const caretEl = widget.querySelector('[data-role="wx-caret"]');
+    const statusEl = widget.querySelector('[data-role="wx-status"]');
+    const loadingEl = widget.querySelector('[data-role="wx-loading"]');
+
+    if (caretEl) caretEl.style.display = '';
+    if (reportEl) reportEl.textContent = '';
+    if (loadingEl) loadingEl.classList.add('is-visible');
+    this._updateWeatherBanner(widget);
+    if (statusEl) statusEl.textContent = `(${reason || 'enter'}) Weerdata ophalen…`;
+
+    if (this._weatherAbortController) {
+      try { this._weatherAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    const controller = new AbortController();
+    this._weatherAbortController = controller;
+
+    try {
+      if (statusEl) statusEl.textContent = 'Gemini schrijft het weerbericht…';
+      const reportText = await this._generateWeatherReport();
+      if (runId !== this._weatherRunId) return;
+
+      if (!reportText) {
+        if (statusEl) statusEl.textContent = 'Gemini gaf geen tekst terug.';
+        if (caretEl) caretEl.style.display = 'none';
+        if (loadingEl) loadingEl.classList.remove('is-visible');
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = `Rapport klaar om ${this._formatHhMm(Date.now())}`;
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+      this._updateWeatherForecastStrip(widget);
+      this._typeWeatherReport(reportEl, caretEl, reportText, runId);
+
+      // Cache the generated report for this slot.
+      const slot = String(widget?.dataset?.wxSlot || '').trim();
+      if (slot === 'morning' || slot === 'midday') {
+        const cacheKey = 'hue-ui-cache:weather:v1';
+        const cache = this._lsGetJson(cacheKey) || {};
+        cache[slot] = { ts: Date.now(), text: String(reportText || '') };
+        this._lsSetJson(cacheKey, cache);
+      }
+    } catch (e) {
+      if (runId !== this._weatherRunId) return;
+      console.warn('[HueRoomScreen] Weather widget failed:', e);
+      if (statusEl) statusEl.textContent = `Mislukt: ${String(e?.message || e)}`;
+      if (reportEl) reportEl.textContent = 'Kon geen weerbericht maken.';
+      if (caretEl) caretEl.style.display = 'none';
+      if (loadingEl) loadingEl.classList.remove('is-visible');
+    } finally {
+      if (this._weatherAbortController === controller) {
+        this._weatherAbortController = null;
+      }
+    }
+  }
+
+  async _fetchLocalJson(url, { timeoutMs = 3500 } = {}) {
+    const safeUrl = String(url || '').trim();
+    if (!safeUrl) throw new Error('Missing URL');
+    const t = Number(timeoutMs);
+    const ms = Number.isFinite(t) ? Math.max(500, Math.min(20000, t)) : 3500;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try { controller.abort(); } catch (_e) { /* ignore */ }
+    }, ms);
+    try {
+      const res = await fetch(this._withCacheBuster(safeUrl), {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${safeUrl}`);
+      const raw = await res.text();
+      try {
+        return JSON.parse(raw);
+      } catch (_e) {
+        // Allow a plain-text fallback so a slightly-invalid Gemini response still shows up.
+        return { ts: Date.now(), text: String(raw || '').trim() };
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  _formatWeatherReportFromJson(obj) {
+    const sanitize = (v) => this._sanitizeBitcoinReportText(v).replace(/\n{3,}/g, '\n\n').trim();
+    const region = sanitize(obj?.region_intro);
+    const nu = sanitize(obj?.nu);
+    const verwachting = sanitize(obj?.verwachting);
+    const kleding = sanitize(obj?.kledingadvies);
+    const jas = sanitize(obj?.jas);
+    const umbrella = sanitize(obj?.paraplu);
+    const noah = sanitize(obj?.noah_school);
+    const felix = sanitize(obj?.felix_opvang);
+    const disclaimer = sanitize(obj?.disclaimer);
+
+    // Fill the playful sub-cards if present.
+    const widget = this.shadowRoot?.querySelector('.wx-widget');
+    if (widget) {
+      const umbEl = widget.querySelector('[data-role="wx-umbrella"]');
+      const jacketEl = widget.querySelector('[data-role="wx-jacket"]');
+      const noahEl = widget.querySelector('[data-role="wx-noah"]');
+      const felixEl = widget.querySelector('[data-role="wx-felix"]');
+      if (umbEl) umbEl.textContent = umbrella ? `Paraplu: ${umbrella}` : 'Paraplu: —';
+      if (jacketEl) jacketEl.textContent = jas ? `Jas: ${jas}` : 'Jas: —';
+      if (noahEl) noahEl.textContent = noah || '—';
+      if (felixEl) felixEl.textContent = felix || '—';
+    }
+
+    const out = [];
+    if (region) out.push(region);
+    if (nu) { out.push(''); out.push(nu); }
+    if (verwachting) { out.push(''); out.push(verwachting); }
+    if (kleding || jas) {
+      out.push('');
+      if (kleding) out.push(`Kledingadvies: ${kleding}`);
+      if (jas) out.push(`Jas: ${jas}`);
+    }
+    if (disclaimer) { out.push(''); out.push(disclaimer); }
+    return out.join('\n').trim();
+  }
+
+  async _generateWeatherReport() {
+    const weather = this._getWeatherState();
+    const location = String(this._roomsIndex?.weather_location || 'Leidschendam').trim() || 'Leidschendam';
+    const rainChance = this._getRainChanceNextHourRoom();
+
+    const people = this._roomsIndex?.people || [];
+    const areaMap = this._roomsIndex?.people_area_sensors || {};
+    const personAreas = {};
+    for (const p of people) {
+      const areaEntity = areaMap?.[p];
+      const st = areaEntity ? this._hass?.states?.[areaEntity] : null;
+      const areaName = st?.attributes?.area_name || st?.state;
+      if (typeof areaName === 'string' && areaName.trim() && areaName !== 'unknown' && areaName !== 'unavailable') {
+        personAreas[p] = areaName.trim();
+      }
+    }
+
+    const now = new Date();
+    const localDay = now.toLocaleDateString('nl-NL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const localTime = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+
+    const mins = this._minutesSinceLocalMidnight();
+    const slot = mins >= (12 * 60) ? 'midday' : 'morning';
+    const startHour = slot === 'midday' ? 12 : 7;
+    const endHour = slot === 'midday' ? 19 : 13;
+
+    const context = {
+      now_local: `${localDay} ${localTime}`,
+      timezone_note: 'Europe/Amsterdam',
+      location_hint: location,
+      rain_next_hour_pct: rainChance,
+      people_areas: personAreas,
+      current: weather ? {
+        condition: String(weather.state || '').trim(),
+        temperature: weather.attributes?.temperature ?? null,
+        feels_like: weather.attributes?.apparent_temperature ?? null,
+        humidity: weather.attributes?.humidity ?? null,
+        wind_speed: weather.attributes?.wind_speed ?? null,
+        wind_gust: weather.attributes?.wind_gust_speed ?? null,
+        pressure: weather.attributes?.pressure ?? null,
+      } : null,
+      focus_window: `${String(startHour).padStart(2,'0')}:00-${String(endHour).padStart(2,'0')}:00`,
+      forecast_sample: Array.isArray(weather?.attributes?.forecast)
+        ? weather.attributes.forecast
+          .map((f) => ({
+            datetime: f?.datetime || f?.time || '',
+            condition: f?.condition || '',
+            temperature: f?.temperature ?? null,
+            precipitation: f?.precipitation ?? null,
+            wind_speed: f?.wind_speed ?? null,
+          }))
+          .filter((f) => {
+            const dt = String(f?.datetime || '');
+            const t = Date.parse(dt);
+            if (!Number.isFinite(t)) return false;
+            const d = new Date(t);
+            const h = d.getHours();
+            return h >= startHour && h <= endHour;
+          })
+          .slice(0, 10)
+        : [],
+      user_profile: {
+        address_area: String(this._roomsIndex?.weather_area_hint || location || '').trim(),
+        baseline_outfit: 'meestal een t-shirt, overhemd en hoodie met spijkerbroek',
+        question: 'Moet ik een winterjas of een herfstjas aan? Of geen jas?',
+        preference: 'ik wil concrete, rustige instructies (autisme)',
+        family: 'gezin van 4: twee volwassenen en twee kinderen (6 en 2 jaar)',
+        practical_questions: [
+          'Moet Noah een jas mee naar school?',
+          'Moet Felix wanten of extra laagjes mee naar de opvang?',
+          'Paraplu nodig voor boodschappen doen?',
+          'Na 18:00 zijn we meestal binnen; waarschuw alleen bij storm/hevige regen.',
+        ],
+      },
+    };
+
+    const prompt = [
+      `Schrijf een speels maar rustig weerbericht in het Nederlands (focus: ${String(startHour).padStart(2,'0')}:00-${String(endHour).padStart(2,'0')}:00).`,
+      '',
+      'Output-regels (strict):',
+      '- Return ALLEEN geldige JSON. Geen markdown. Geen extra tekst.',
+      '- Geen links/URLs, geen domeinen.',
+      '- Wees concreet en rustig (autisme). Zeg expliciet wat aan te trekken.',
+      '- Focus op het dagdeel; avond/nacht alleen noemen bij storm of iets waar we rekening mee moeten houden.',
+      '',
+      'Schema (exact deze keys):',
+      '{',
+      '  "region_intro": "1 zin: voor welke regio is dit bericht (noem ook de personen als dat kan)",',
+      '  "nu": "1 korte alinea: hoe is het nu",',
+      '  "verwachting": "1 alinea: dit dagdeel met relevante punten zoals regen/wind/koud/heet",',
+      '  "kledingadvies": "1 alinea: wat trek ik aan (laagjes), en wanneer afwijken",',
+      '  "jas": "1 kort antwoord: winterjas / herfstjas / geen jas / regenjas",',
+      '  "paraplu": "1 kort antwoord: ja/nee + reden",',
+      '  "noah_school": "1 korte alinea met advies voor Noah (6): jas/regen/extra kleding",',
+      '  "felix_opvang": "1 korte alinea met advies voor Felix (2): wanten/extra laagjes/regenkleding",',
+      '  "disclaimer": "1 zin"',
+      '}',
+      '',
+      'Context (gebruik dit, maar herhaal geen lijstjes):',
+      JSON.stringify(context),
+    ].join('\n');
+
+    const agentId = await this._pickConversationAgentId('');
+    const result = await this._conversationProcess(prompt, agentId);
+    const raw = this._extractConversationText(result);
+    const obj = this._safeJsonParseObject(raw);
+    if (obj) return this._formatWeatherReportFromJson(obj);
+    return this._normalizeBitcoinReportText(raw);
+  }
+
+  _typeWeatherReport(reportEl, caretEl, text, runId) {
+    if (!reportEl) return;
+    if (this._weatherTypingTimer) {
+      clearInterval(this._weatherTypingTimer);
+      this._weatherTypingTimer = null;
+    }
+
+    const full = this._normalizeBitcoinReportText(text);
+    const total = full.length;
+    if (total === 0) {
+      if (caretEl) caretEl.style.display = 'none';
+      return;
+    }
+
+    if (caretEl) caretEl.style.display = '';
+    reportEl.textContent = '';
+
+    const chunk = total > 3500 ? 10 : total > 1800 ? 6 : total > 900 ? 3 : 1;
+    let i = 0;
+    this._weatherTypingTimer = setInterval(() => {
+      if (runId !== this._weatherRunId) {
+        clearInterval(this._weatherTypingTimer);
+        this._weatherTypingTimer = null;
+        return;
+      }
+      i = Math.min(total, i + chunk);
+      reportEl.textContent = full.slice(0, i);
+      if (i >= total) {
+        clearInterval(this._weatherTypingTimer);
+        this._weatherTypingTimer = null;
+        if (caretEl) caretEl.style.display = 'none';
+      }
+    }, 22);
   }
 
   // ===== Event Handling =====
@@ -1756,6 +3960,22 @@ class HueRoomScreen extends HTMLElement {
       return;
     }
 
+    const newsAction = e.target.closest('[data-news-action]')?.dataset.newsAction;
+    if (newsAction) {
+      if (newsAction === 'copy') {
+        const item = e.target.closest('.newsr-item');
+        const headline = String(item?.dataset?.headline || '').trim();
+        const summary = String(item?.dataset?.summary || '').trim();
+        const url = String(item?.dataset?.url || '').trim();
+        const text = [headline, summary, url].filter(Boolean).join('\n\n');
+        e.preventDefault();
+        e.stopPropagation();
+        hapticFeedback();
+        void this._copyToClipboard(text);
+        return;
+      }
+    }
+
     const lightOverlay = this.shadowRoot.querySelector('.light-control-overlay');
     if (lightOverlay?.classList.contains('is-open')) {
       if (e.target === lightOverlay) {
@@ -1823,6 +4043,10 @@ class HueRoomScreen extends HTMLElement {
     if (!target) return;
 
     const { action, entity, path } = target.dataset;
+    const svcDomain = target.dataset.serviceDomain;
+    const svcName = target.dataset.serviceName;
+    const svcDataRaw = target.dataset.serviceData;
+    const actionDataRaw = target.dataset.actionData;
 
     hapticFeedback();
 
@@ -1854,6 +4078,38 @@ class HueRoomScreen extends HTMLElement {
       case 'press':
         if (entity) handleAction(this._hass, 'press', entity);
         break;
+
+      case 'tts_say': {
+        let opts = {};
+        if (actionDataRaw) {
+          try {
+            const parsed = JSON.parse(actionDataRaw);
+            if (parsed && typeof parsed === 'object') opts = parsed;
+          } catch (e2) {
+            console.warn('[HueRoomScreen] Bad action data JSON:', e2);
+          }
+        }
+        handleAction(this._hass, 'tts_say', entity || '', opts);
+        break;
+      }
+
+      case 'call_service': {
+        let data = {};
+        if (svcDataRaw) {
+          try {
+            const parsed = JSON.parse(svcDataRaw);
+            if (parsed && typeof parsed === 'object') data = parsed;
+          } catch (e2) {
+            console.warn('[HueRoomScreen] Bad service data JSON:', e2);
+          }
+        }
+        handleAction(this._hass, 'call_service', entity || '', {
+          domain: svcDomain,
+          service: svcName,
+          data,
+        });
+        break;
+      }
 
       case 'more_info':
         if (entity) handleAction(this._hass, 'more_info', entity);
@@ -3010,8 +5266,35 @@ class HueRoomScreen extends HTMLElement {
     this._updateSensorTiles();
     this._applyWidgetOverridesToDom();
     this._refreshLightControlUi();
+
+    // Optional: on doorbell/attention triggers, force the primary camera feed to reload.
+    this._maybeKickAttentionCamera();
   }
 
+  _maybeKickAttentionCamera() {
+    const attentionEntity = this._roomConfig?.attention_entity;
+    const attentionCamera = this._roomConfig?.attention_camera_entity;
+    if (!attentionEntity || !attentionCamera) return;
+    const state = this._hass?.states?.[attentionEntity];
+    const isOn = state?.state === 'on';
+    if (this._attentionLastOn == null) this._attentionLastOn = isOn;
+    if (!this._attentionLastOn && isOn) {
+      this._reloadCameraNow(attentionCamera);
+    }
+    this._attentionLastOn = isOn;
+  }
+
+  _reloadCameraNow(cameraEntityId) {
+    if (!cameraEntityId) return;
+    const img = this.shadowRoot?.querySelector(`.hue-camera-feed[data-entity="${CSS.escape(cameraEntityId)}"]`);
+    if (!img) return;
+
+    // Restart the MJPEG connection. Adding a cache buster ensures the browser opens a new request.
+    const liveSrc = img.dataset.liveSrc || '';
+    if (!liveSrc) return;
+    img.dataset.mode = 'live';
+    img.src = this._withCacheBuster(liveSrc);
+  }
   _cameraStreamUrl(entityId, stateOverride = null) {
     const state = stateOverride || this._hass?.states?.[entityId];
     const token = state?.attributes?.access_token;
@@ -3366,14 +5649,18 @@ class HueRoomScreen extends HTMLElement {
   _updateActionTiles() {
     this.shadowRoot.querySelectorAll('.hue-action-tile').forEach((tile) => {
       const entityId = tile.dataset.entity;
-      const state = this._hass?.states?.[entityId];
-      const available = !!state && state.state !== 'unavailable' && state.state !== 'unknown';
+      const isServiceTile = !!tile.dataset.serviceDomain && !!tile.dataset.serviceName;
+      const state = entityId ? this._hass?.states?.[entityId] : null;
+      const available = isServiceTile
+        ? true
+        : (!!state && state.state !== 'unavailable' && state.state !== 'unknown');
 
       tile.classList.toggle('is-disabled', !available);
       tile.disabled = !available;
 
       const subtitle = tile.querySelector('.hue-tile-subtitle');
       if (!subtitle) return;
+      if (tile.dataset.subtitleFixed === 'true') return;
       subtitle.textContent = available ? 'Tap to run' : 'Unavailable';
     });
   }
@@ -3409,12 +5696,71 @@ class HueRoomScreen extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._exitKioskMode();
     // Only tear down timers and camera feeds.
     // Event listeners are on the persistent shadowRoot — leave them intact
     // so they survive disconnect/reconnect cycles without reattachment.
     this._teardownCameraFeeds();
+    this._cancelBitcoinJobs({ resetReport: true });
+    this._cancelWeatherJobs({ resetReport: true });
+    this._cancelNewsJobs({ resetReport: true });
     this._clearLongPressTimer();
     this._closeLightControl();
+  }
+
+  _enterKioskMode() {
+    if (this._kioskRestore) return;
+    this._kioskRestore = [];
+    const nodes = this._deepQueryAll(['app-header', 'ha-tabs', 'ha-tab-bar', 'app-toolbar']);
+    for (const el of nodes) {
+      if (!el || !(el instanceof HTMLElement)) continue;
+      if (this.contains(el)) continue;
+      const prev = el.style.display;
+      this._kioskRestore.push([el, prev]);
+      el.style.setProperty('display', 'none', 'important');
+    }
+  }
+
+  _exitKioskMode() {
+    const restore = Array.isArray(this._kioskRestore) ? this._kioskRestore : null;
+    this._kioskRestore = null;
+    if (!restore) return;
+    for (const [el, prev] of restore) {
+      try {
+        if (!el || !(el instanceof HTMLElement)) continue;
+        if (prev) el.style.display = prev;
+        else el.style.removeProperty('display');
+      } catch (_e) { /* ignore */ }
+    }
+  }
+
+  _deepQueryAll(selectors) {
+    const sel = Array.isArray(selectors) ? selectors : [selectors];
+    const out = [];
+    const seen = new Set();
+    const stack = [document.documentElement];
+    while (stack.length) {
+      const root = stack.pop();
+      if (!root) continue;
+      try {
+        for (const s of sel) {
+          const list = root.querySelectorAll ? root.querySelectorAll(s) : [];
+          for (const el of list) {
+            if (!el) continue;
+            if (seen.has(el)) continue;
+            seen.add(el);
+            out.push(el);
+          }
+        }
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+        let n = walker.currentNode;
+        while (n) {
+          if (n.shadowRoot) stack.push(n.shadowRoot);
+          n = walker.nextNode();
+        }
+      } catch (_e) { /* ignore */ }
+    }
+    return out;
   }
 
   static getStubConfig() {

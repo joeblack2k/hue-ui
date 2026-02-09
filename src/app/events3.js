@@ -14,6 +14,39 @@ export function handleAction(hass, action, entity, options = {}) {
   if (!hass) return;
 
   switch (action) {
+    case 'tts_say': {
+      const player = String(options?.media_player_entity_id || entity || '').trim();
+      const message = String(options?.message || '').trim();
+      const provider = String(options?.provider_entity_id || 'tts.google_ai_tts').trim();
+      if (!player || !message) return;
+
+      // Prefer Google AI TTS when available, but fall back to other providers to ensure speech works.
+      void Promise.resolve()
+        .then(() => hass.callService('tts', 'speak', {
+          entity_id: provider,
+          media_player_entity_id: player,
+          message,
+        }))
+        .catch(() => hass.callService('tts', 'cloud_say', {
+          entity_id: player,
+          message,
+        }))
+        .catch(() => hass.callService('tts', 'google_translate_say', {
+          entity_id: player,
+          message,
+        }));
+      break;
+    }
+
+    case 'call_service': {
+      const domain = String(options?.domain || '').trim();
+      const service = String(options?.service || '').trim();
+      const data = options?.data && typeof options.data === 'object' ? options.data : {};
+      if (!domain || !service) return;
+      hass.callService(domain, service, data);
+      break;
+    }
+
     case 'toggle':
       toggleEntity(hass, entity);
       break;
