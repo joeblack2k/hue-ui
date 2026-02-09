@@ -14,15 +14,15 @@ import {
   loadRoomConfig,
   getRoomFromIndex,
   saveRoomConfigOverride,
-} from './config-loader3.js?v=3.1.80';
-import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.80';
-import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.80';
-import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.80';
-import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.80';
-import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.80';
-import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.80';
-import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.80';
-import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.80';
+} from './config-loader3.js?v=3.1.81';
+import { handleAction, toggleAllLights, hapticFeedback } from './events3.js?v=3.1.81';
+import { escapeHtml, getLightColor, isEntityOn, formatHvacMode, t, getWeatherEmoji, translateCondition } from '../ui/helpers2.js?v=3.1.81';
+import { renderScenesContent } from '../widgets/scenes.widget3.js?v=3.1.81';
+import { renderLightingContent } from '../widgets/lighting.widget3.js?v=3.1.81';
+import { renderClimateContent } from '../widgets/climate.widget2.js?v=3.1.81';
+import { renderDevicesContent, renderMediaPlayersContent } from '../widgets/devices.widget2.js?v=3.1.81';
+import { renderSensorsContent } from '../widgets/sensors.widget2.js?v=3.1.81';
+import { renderActionsContent } from '../widgets/actions.widget2.js?v=3.1.81';
 import {
   renderBitcoinSection,
   fetchBtcPrice,
@@ -34,9 +34,9 @@ import {
   formatCurrency,
   formatPercent,
   BITCOIN_SECTION_CSS,
-} from '../widgets/bitcoin.widget.js?v=3.1.80';
-import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.80';
-import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.80';
+} from '../widgets/bitcoin.widget.js?v=3.1.81';
+import { renderWeatherSection, WEATHER_SECTION_CSS } from '../widgets/weather.widget.js?v=3.1.81';
+import { renderNewsRoomSection, NEWS_ROOM_CSS } from '../widgets/news-room.widget.js?v=3.1.81';
 
 const STYLES = `
   /* ===== ROOT LAYOUT ===== */
@@ -1209,7 +1209,7 @@ const STYLES = `
     box-shadow: var(--hue-shadow-card);
     border: 1px solid rgba(255, 255, 255, 0.06);
     overflow: hidden;
-    cursor: pointer;
+    cursor: default;
   }
 
   .hue-camera-card.is-unavailable {
@@ -1221,6 +1221,7 @@ const STYLES = `
     width: 100%;
     aspect-ratio: 16 / 9;
     background: rgba(0, 0, 0, 0.35);
+    cursor: pointer;
   }
 
   .hue-camera-feed {
@@ -1228,6 +1229,121 @@ const STYLES = `
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  .hue-camera-hero .hue-camera-media {
+    aspect-ratio: 9 / 16;
+    min-height: 54vh;
+    max-height: 68vh;
+  }
+
+  .hue-camera-hero .hue-camera-feed {
+    transform: translateZ(0);
+  }
+
+  .hue-camera-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.10) 28%, rgba(0,0,0,0.10) 72%, rgba(0,0,0,0.65) 100%);
+  }
+
+  .hue-camera-overlay-top {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .hue-camera-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .hue-camera-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.40);
+    border: 1px solid rgba(255,255,255,0.16);
+    color: rgba(255,255,255,0.94);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.35);
+    white-space: nowrap;
+  }
+
+  .hue-camera-badge.is-live {
+    background: rgba(207, 52, 52, 0.42);
+    border-color: rgba(255, 120, 120, 0.35);
+  }
+
+  .hue-camera-badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.92);
+    opacity: 0.9;
+  }
+
+  .hue-camera-badge.is-live .hue-camera-badge-dot {
+    background: #ff4b4b;
+    box-shadow: 0 0 0 6px rgba(255, 75, 75, 0.15);
+  }
+
+  .hue-camera-overlay-bottom {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    pointer-events: auto;
+  }
+
+  .hue-cam-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 8px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(0,0,0,0.24);
+    color: rgba(255,255,255,0.94);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.35);
+    cursor: pointer;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  .hue-cam-btn:active { transform: scale(0.98); }
+
+  .hue-cam-btn .lbl {
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.86);
+    white-space: nowrap;
+  }
+
+  .hue-cam-btn.is-primary {
+    background: rgba(118,185,255,0.18);
+    border-color: rgba(118,185,255,0.38);
   }
 
   .hue-camera-meta {
@@ -1757,13 +1873,46 @@ class HueRoomScreen extends HTMLElement {
     const loadingAttr = eager ? 'eager' : 'lazy';
     const fetchPriorityAttr = eager ? 'high' : 'auto';
 
+    const variant = String(section.variant || section.style || '').trim().toLowerCase();
+    const isRing = variant === 'ring' || variant === 'hero' || section.hero === true;
+    const lightEntity = String(section.light_entity || section.light || '').trim();
+    const lockEntity = String(section.lock_entity || section.lock || '').trim();
+
+    const ringControls = isRing ? `
+      <div class="hue-camera-overlay-bottom">
+        <button class="hue-cam-btn is-primary" type="button" data-action="camera_reload" data-entity="${escapeHtml(entityId)}" aria-label="Live">
+          <ha-icon icon="mdi:play"></ha-icon>
+          <span class="lbl">Live</span>
+        </button>
+        <button class="hue-cam-btn" type="button" data-action="camera_snapshot" data-entity="${escapeHtml(entityId)}" aria-label="Snapshot">
+          <ha-icon icon="mdi:camera"></ha-icon>
+          <span class="lbl">Foto</span>
+        </button>
+        <button class="hue-cam-btn" type="button" data-action="toggle" data-entity="${escapeHtml(lightEntity || '')}" ${lightEntity ? '' : 'disabled'} aria-label="Licht">
+          <ha-icon icon="mdi:lightbulb"></ha-icon>
+          <span class="lbl">Licht</span>
+        </button>
+        <button class="hue-cam-btn" type="button"
+          data-action="call_service"
+          data-entity="${escapeHtml(lockEntity || '')}"
+          data-service-domain="lock"
+          data-service-name="open"
+          data-service-data="{}"
+          ${lockEntity ? '' : 'disabled'}
+          aria-label="Open deur">
+          <ha-icon icon="mdi:door-open"></ha-icon>
+          <span class="lbl">Open</span>
+        </button>
+      </div>
+    ` : '';
+
     return `
       <div class="hue-section">
         <div class="hue-section-header">
           <span class="hue-section-title">${escapeHtml(t(title.toUpperCase(), title.toUpperCase()))}</span>
         </div>
-        <div class="hue-camera-card ${available ? '' : 'is-unavailable'}" data-action="more_info" data-entity="${escapeHtml(entityId)}">
-          <div class="hue-camera-media">
+        <div class="hue-camera-card ${available ? '' : 'is-unavailable'} ${isRing ? 'hue-camera-hero' : ''}" data-entity="${escapeHtml(entityId)}">
+          <div class="hue-camera-media" data-action="more_info" data-entity="${escapeHtml(entityId)}">
             <img
               class="hue-camera-feed"
               src="${escapeHtml(this._withCacheBuster(snapshotUrl))}"
@@ -1776,8 +1925,20 @@ class HueRoomScreen extends HTMLElement {
               data-refresh-ms="${refreshMs}"
               data-entity="${escapeHtml(entityId)}"
             />
+            ${isRing ? `
+              <div class="hue-camera-overlay">
+                <div class="hue-camera-overlay-top">
+                  <div class="hue-camera-badges">
+                    <span class="hue-camera-badge is-live"><span class="hue-camera-badge-dot"></span>Live</span>
+                    <span class="hue-camera-badge">${escapeHtml(cameraName)}</span>
+                  </div>
+                  <span class="hue-camera-badge">${escapeHtml(!available ? 'Offline' : 'Verbonden')}</span>
+                </div>
+              </div>
+            ` : ''}
+            ${ringControls}
           </div>
-          <div class="hue-camera-meta">
+          <div class="hue-camera-meta" style="${isRing ? 'display:none;' : ''}">
             <div class="hue-camera-name">${escapeHtml(cameraName)}</div>
             <div class="hue-camera-status">${escapeHtml(statusText)}</div>
           </div>
@@ -4301,6 +4462,30 @@ class HueRoomScreen extends HTMLElement {
       case 'navigate':
         this._navigateToPath(path, false);
         break;
+
+      case 'camera_reload':
+        if (entity) this._reloadCameraNow(entity);
+        break;
+
+      case 'camera_snapshot': {
+        if (!entity) break;
+        const img = this.shadowRoot?.querySelector(`.hue-camera-feed[data-entity="${CSS.escape(entity)}"]`);
+        if (img) {
+          img.dataset.mode = 'snapshot';
+          this._switchCameraToSnapshot(img);
+          const rawRefreshMs = Number.parseInt(img.dataset.refreshMs || '4500', 10);
+          const refreshMs = Number.isFinite(rawRefreshMs)
+            ? Math.max(2000, Math.min(15000, rawRefreshMs))
+            : 4500;
+          // Ensure polling is active when user explicitly asks for snapshots.
+          if (!this._cameraRefreshIntervals.has(img)) {
+            this._startSnapshotPolling(img, refreshMs);
+          } else {
+            this._refreshCameraSnapshot(img, true);
+          }
+        }
+        break;
+      }
 
       case 'toggle_room_lights':
         toggleAllLights(this._hass, this._getAllLightEntities());
